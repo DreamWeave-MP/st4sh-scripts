@@ -1,0 +1,45 @@
+manifest_version = 1
+
+[package]
+id = "org.dreamweave.st4sh-scripts"
+version = "0.1.1"
+jess_api = "1"
+include = ["src", "assets", "LICENSES", "README.md"]
+tests = []
+
+[dependencies]
+"org.dreamweave.magick" = "^0.1.2"
+
+[modules]
+"@st4sh/scripts" = "src/init.luau"
+"@st4sh/scripts.cli" = "src/cli.luau"
+"@st4sh/scripts.atlas" = "src/atlas.luau"
+"@st4sh/scripts.morrowind-ui" = "src/morrowind_ui.luau"
+"@st4sh/scripts.morrowind-fucked" = "src/morrowind_fucked.luau"
+"@st4sh/scripts.morrowind-font-masks" = "src/morrowind_font_masks.luau"
+"@st4sh/scripts.morrowind-spiral-masks" = "src/morrowind_spiral_masks.luau"
+"@st4sh/scripts.morrowind-oracle-masks" = "src/morrowind_oracle_masks.luau"
+"@st4sh/scripts.h3" = "src/h3.luau"
+"@st4sh/scripts.h3-masks" = "src/h3_masks.luau"
+"@st4sh/scripts.cod3x" = "src/cod3x.luau"
+"@st4sh/scripts.cod3x-masks" = "src/cod3x_masks.luau"
+"@st4sh/scripts.material-variants" = "src/material_variants.luau"
+
+[[layer]]
+id = "org.dreamweave.st4sh-scripts"
+requires = ["org.dreamweave.magick"]
+exports = [
+  "@st4sh/scripts",
+  "@st4sh/scripts.cli",
+  "@st4sh/scripts.atlas",
+  "@st4sh/scripts.morrowind-ui",
+  "@st4sh/scripts.morrowind-fucked",
+  "@st4sh/scripts.morrowind-font-masks",
+  "@st4sh/scripts.morrowind-spiral-masks",
+  "@st4sh/scripts.morrowind-oracle-masks",
+  "@st4sh/scripts.h3",
+  "@st4sh/scripts.h3-masks",
+  "@st4sh/scripts.cod3x",
+  "@st4sh/scripts.cod3x-masks",
+  "@st4sh/scripts.material-variants",
+]

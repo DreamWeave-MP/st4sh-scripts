@@ -1,0 +1,10 @@
+-- Unified St4sh graphics/build-script toolbox. Generic image operations live in @magick.
+return table.freeze({
+    atlas=require('@st4sh/scripts.atlas'),
+    morrowind=require('@st4sh/scripts.morrowind-ui'),
+    morrowindFucked=require('@st4sh/scripts.morrowind-fucked'),
+    h3=require('@st4sh/scripts.h3'),
+    cod3x=require('@st4sh/scripts.cod3x'),
+    materialVariants=require('@st4sh/scripts.material-variants'),
+    cli=require('@st4sh/scripts.cli'),
+})

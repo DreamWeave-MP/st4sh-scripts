@@ -1,0 +1,10 @@
+Operation Napalm Regular / Italic
+
+The embedded font metadata states:
+  Copyright: No Rights Reserved
+  License: Creative Commons Zero v1.0 Universal
+  License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+Files bundled here unchanged:
+  assets/fonts/OperationNapalm-Regular.ttf
+  assets/fonts/OperationNapalm-Italic.ttf
