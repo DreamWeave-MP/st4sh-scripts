@@ -1,0 +1,570 @@
+--!strict
+--!native
+-- The artwork generators, pinned: COD3X, the H3 header, logo and chrome, the progressive atlas
+-- and the material variants. Every file one writes is held to its bytes, every call to what it
+-- answers, and every refusal to its words. Pictures a generator reads are made here from a seed.
+local atlas = require '@st4sh/scripts.atlas'
+local cod3x = require '@st4sh/scripts.cod3x'
+local goldens = require './goldens'
+local h3 = require '@st4sh/scripts.h3'
+local magick = require '@magick'
+local support = require './support'
+local test = require '@jess/test'
+local ui = require '@st4sh/scripts.morrowind-ui'
+local variants = require '@st4sh/scripts.material-variants'
+
+local expect = test.expect
+local suite = test.new()
+local pin, settle = support.goldens(goldens.artwork)
+local scratch, join = support.scratch, jess.fs.join
+
+--- Each way the atlas makes its tiles, by the options that choose it.
+local AtlasModes = {
+  { name = 'scrolled', mask = false, width = false, delete = false },
+  { name = 'scrolled whatever else', mask = false, width = true, delete = true },
+  { name = 'masked by rows', mask = true, width = false, delete = false },
+  { name = 'masked by columns', mask = true, width = true, delete = false },
+  { name = 'deleted by rows', mask = true, width = false, delete = true },
+  { name = 'deleted by columns', mask = true, width = true, delete = true },
+}
+
+local CatalogHeader = 'stem\tfamily\tname\tphoto\tcropX\tcropY\turl\tauthor\tlicense'
+
+--- The rows of a catalog of materials: two materials, and one too short to be one.
+local CatalogRows = {
+  slate = 'slate\tStone\tSlate "Grey"\tslate.png\t3\t0\thttps://example.test/slate\tA. Mason\tCC0',
+  short = 'short\trow',
+  oak = 'oak\tWood\tOak\\Plank\toak.png\t\t\thttps://example.test/oak\tJ. Joiner\tCC-BY\tand more',
+}
+
+--- A picture of noise written as a PNG, and its path.
+local function photo(folder: string, name: string, width: number, height: number, seed: number): string
+  return magick.write(join(folder, name), support.picture(width, height, seed))
+end
+
+--- A file of a few bytes, and its path.
+local function plant(folder: string, name: string, text: string): string
+  local path = join(folder, name)
+
+  jess.fs.write(path, text)
+
+  return path
+end
+
+suite.afterEach(settle)
+
+suite.describe('cod3x', function()
+  suite.it('makes the hero, the scope, the icon and the badge', function()
+    local out = scratch('cod3x', 'all')
+    local result = cod3x.generateAll { output = out }
+
+    expect(result).toEqual {
+      hero = { header = join(out, 'nexusHeader.png'), width = 1300, height = 372 },
+      scope = { scope = join(out, 'scope.png'), width = 1300, height = 900 },
+      mark = { icon = join(out, 'icon.png'), badge = join(out, 'badge.png') },
+    }
+
+    expect(support.files(out)).toEqual { 'badge.png', 'icon.png', 'nexusHeader.png', 'scope.png' }
+    pin('cod3x hero', support.file(result.hero.header))
+    pin('cod3x scope', support.file(result.scope.scope))
+    pin('cod3x icon', support.file(result.mark.icon))
+    pin('cod3x badge', support.file(result.mark.badge))
+  end)
+
+  suite.it('writes each where it is told', function()
+    local out = scratch('cod3x', 'paths')
+    local elsewhere = scratch('cod3x', 'elsewhere')
+    local hero = cod3x.generateHero { output = out, path = join(elsewhere, 'hero.png') }
+    local scope = cod3x.generateScope { output = out, path = join(elsewhere, 'scope.dds') }
+
+    local mark = cod3x.generateMark {
+      output = out,
+      iconPath = join(elsewhere, 'mark.dds'),
+      badgePath = join(elsewhere, 'badge.dds'),
+    }
+
+    expect(hero).toEqual { header = join(elsewhere, 'hero.png'), width = 1300, height = 372 }
+    expect(scope).toEqual { scope = join(elsewhere, 'scope.dds'), width = 1300, height = 900 }
+    expect(mark).toEqual { icon = join(elsewhere, 'mark.dds'), badge = join(elsewhere, 'badge.dds') }
+    expect(support.files(out)).toEqual {}
+    pin('cod3x hero elsewhere', support.file(hero.header))
+    pin('cod3x scope as dds', support.file(scope.scope))
+    pin('cod3x icon as dds', support.file(mark.icon))
+    pin('cod3x badge as dds', support.file(mark.badge))
+  end)
+
+  suite.it('names its palette, and refuses a file for a folder', function()
+    expect(cod3x.palette).toEqual {
+      BG = '#101010',
+      PANEL = '#18151f',
+      PURPLE = '#55006b',
+      VIOLET = '#b48cff',
+      TEXT = '#f4f1f7',
+      MUTED = '#aeb4c0',
+      GREEN = '#7ee2a8',
+      BLUE = '#83c7ff',
+      GOLD = '#f2c66d',
+    }
+
+    local taken = plant(scratch('cod3x', 'refused'), 'taken', 'a file')
+
+    for _, generate in { cod3x.generateHero, cod3x.generateScope, cod3x.generateMark, cod3x.generateAll } do
+      expect(function()
+        generate { output = taken }
+      end).toThrow(taken .. ' exists and is not a directory')
+    end
+  end)
+end)
+
+suite.describe('h3 header and logo', function()
+  suite.it('makes the clean header and the classified one', function()
+    local out = scratch('h3', 'header')
+    local crowbar = photo(out, 'crowbar.png', 120, 180, 9)
+
+    local result = h3.generateHeader {
+      crowbar = crowbar,
+      cleanOutput = join(out, 'clean.png'),
+      output = join(out, 'classified.png'),
+    }
+
+    expect(result).toEqual {
+      clean = join(out, 'clean.png'),
+      classified = join(out, 'classified.png'),
+      width = 1300,
+      height = 372,
+    }
+
+    pin('header clean', support.file(result.clean))
+    pin('header classified', support.file(result.classified))
+
+    local seeded = h3.generateHeader {
+      crowbar = crowbar,
+      cleanOutput = join(out, 'seeded-clean.dds'),
+      output = join(out, 'seeded.dds'),
+      seed = 12,
+    }
+
+    pin('header clean as dds', support.file(seeded.clean))
+    pin('header seeded as dds', support.file(seeded.classified))
+  end)
+
+  suite.it('stops at the clean header when told not to classify', function()
+    local out = scratch('h3', 'header-clean')
+    local crowbar = photo(out, 'crowbar.png', 120, 180, 9)
+    local result = h3.generateHeader { crowbar = crowbar, cleanOutput = join(out, 'clean.dds'), classified = false }
+
+    expect(result).toEqual { clean = join(out, 'clean.dds') }
+    expect(support.files(out)).toEqual { 'clean.dds', 'crowbar.png' }
+    pin('header clean alone as dds', support.file(result.clean))
+  end)
+
+  suite.it('makes the badge, the classified badge and the icon', function()
+    local out = scratch('h3', 'logo')
+    local crowbar = photo(scratch('h3', 'logo-source'), 'crowbar.png', 90, 140, 21)
+    local result = h3.generateLogo { crowbar = crowbar, output = out }
+
+    expect(result).toEqual {
+      clean = join(out, 'h3_badge_clean_v6.png'),
+      classified = join(out, 'h3_badge_classified_v6.png'),
+      icon = join(out, 'h3_icon_v6.png'),
+    }
+
+    pin('logo clean', support.file(result.clean))
+    pin('logo classified', support.file(result.classified))
+    pin('logo icon', support.file(result.icon))
+  end)
+
+  suite.it('makes only the target asked for', function()
+    local source = scratch('h3', 'logo-source')
+    local crowbar = photo(source, 'crowbar.png', 90, 140, 21)
+    local icon, nothing = scratch('h3', 'logo-icon'), join(source, 'logo-nothing')
+
+    expect(h3.generateLogo { crowbar = crowbar, output = icon, target = 'icon' }).toEqual {
+      icon = join(icon, 'h3_icon_v6.png'),
+    }
+
+    expect(support.files(icon)).toEqual { 'h3_icon_v6.png' }
+    pin('logo icon alone', support.file(join(icon, 'h3_icon_v6.png')))
+    expect(h3.generateLogo { crowbar = crowbar, output = nothing, target = 'poster' }).toEqual {}
+    expect(support.files(nothing)).toEqual {}
+  end)
+
+  suite.it('refuses to work without a crowbar', function()
+    expect(function()
+      h3.generateHeader {}
+    end).toThrow 'h3-tools: crowbar path required'
+
+    expect(function()
+      h3.generateLogo { output = scratch('h3', 'logo-refused') }
+    end).toThrow 'h3-tools: crowbar path required'
+
+    expect(support.files(scratch('h3', 'logo-refused'))).toEqual {}
+  end)
+end)
+
+suite.describe('h3 chrome', function()
+  --- The twelve chrome sources of a material, made once for the cases that read them.
+  local sources: string?
+
+  local function chrome(): string
+    if sources then return sources end
+
+    local out = scratch('h3', 'chrome')
+    local material = photo(out, 'material.png', 100, 80, 33)
+    local result = h3.generateChromeSources { material = material, output = join(out, 'sources') }
+
+    expect(result).toEqual { output = join(out, 'sources', 'Textures', 'h3ui'), cropX = 0, cropY = 0, files = 12 }
+    sources = result.output
+
+    return result.output
+  end
+
+  suite.it('makes the chrome sources of a material', function()
+    local folder = chrome()
+
+    expect(support.files(folder)).toEqual {
+      'arrow_down.dds',
+      'arrow_left.dds',
+      'arrow_right.dds',
+      'arrow_up.dds',
+      'flat_white.dds',
+      'frame_button.dds',
+      'frame_caption.dds',
+      'frame_pin_down.dds',
+      'frame_pin_up.dds',
+      'frame_thick.dds',
+      'frame_thin.dds',
+      'meter_fill.dds',
+    }
+
+    pin('chrome sources', support.folder(folder))
+
+    for _, name in support.files(folder) do
+      pin(`chrome {name}`, support.file(join(folder, name)))
+    end
+  end)
+
+  suite.it('crops a material where it is told, from a seed', function()
+    local out = scratch('h3', 'chrome-cropped')
+    local material = photo(out, 'material.png', 100, 80, 33)
+
+    local result = h3.generateChromeSources {
+      material = material,
+      output = join(out, 'sources'),
+      cropX = 20,
+      cropY = 0,
+      seed = 5,
+    }
+
+    expect(result).toEqual { output = join(out, 'sources', 'Textures', 'h3ui'), cropX = 20, cropY = 0, files = 12 }
+    pin('chrome sources cropped', support.folder(result.output))
+  end)
+
+  suite.it('refuses a crop outside the material, and no material at all', function()
+    local out = scratch('h3', 'chrome-refused')
+    local material = photo(out, 'material.png', 100, 80, 33)
+
+    for _, crop in { { 21, 0 }, { 0, 1 }, { -1, 0 }, { 0, -1 } } do
+      expect(function()
+        h3.generateChromeSources { material = material, output = join(out, 'sources'), cropX = crop[1], cropY = crop[2] }
+      end).toThrow 'material crop does not fit image'
+    end
+
+    expect(function()
+      h3.generateChromeSources { output = join(out, 'sources') }
+    end).toThrow 'h3-tools: --material path required'
+
+    expect(support.files(join(out, 'sources'))).toEqual {}
+  end)
+
+  suite.it('recomposes the H3UI sources into an atlas and its manifest', function()
+    local out = scratch('h3', 'recomposed')
+    local result = h3.recomposeChrome { h3ui = chrome(), output = out }
+
+    expect(result).toEqual {
+      manifest = join(out, 'h3ui_chrome_manifest.lua'),
+      output = join(out, 'Textures', 'h3ui'),
+      h3ui = join(out, 'Textures', 'h3ui', 'h3ui_chrome.dds'),
+    }
+
+    expect(support.files(out)).toEqual { 'Textures/h3ui/h3ui_chrome.dds', 'h3ui_chrome_manifest.lua' }
+    pin('recomposed h3ui atlas', support.file(result.h3ui :: string))
+    pin('recomposed h3ui manifest', support.file(result.manifest))
+  end)
+
+  suite.it('recomposes a Morrowind theme, alone and beside H3UI', function()
+    local theme = ui.generate { output = scratch('h3', 'theme'), seed = 3 }.output
+    local alone, both = scratch('h3', 'recomposed-morrowind'), scratch('h3', 'recomposed-both')
+    local result = h3.recomposeChrome { morrowind = theme, output = alone }
+
+    expect(result).toEqual {
+      manifest = join(alone, 'h3ui_chrome_manifest.lua'),
+      output = join(alone, 'Textures', 'h3ui'),
+      morrowind = join(alone, 'Textures', 'h3ui', 'morrowind_chrome.dds'),
+    }
+
+    expect(support.files(alone)).toEqual {
+      'Textures/h3ui/chrome/morrowind.dds',
+      'Textures/h3ui/morrowind_chrome.dds',
+      'h3ui_chrome_manifest.lua',
+    }
+
+    pin('recomposed morrowind atlas', support.file(result.morrowind :: string))
+    pin('recomposed morrowind manifest', support.file(result.manifest))
+
+    expect(support.file(join(alone, 'Textures', 'h3ui', 'chrome', 'morrowind.dds'))).toBe(
+      support.file(result.morrowind :: string)
+    )
+
+    local together = h3.recomposeChrome { h3ui = chrome(), morrowind = theme, openmw = theme, output = both }
+
+    expect(together).toEqual {
+      manifest = join(both, 'h3ui_chrome_manifest.lua'),
+      output = join(both, 'Textures', 'h3ui'),
+      h3ui = join(both, 'Textures', 'h3ui', 'h3ui_chrome.dds'),
+      morrowind = join(both, 'Textures', 'h3ui', 'morrowind_chrome.dds'),
+    }
+
+    pin('recomposed both', support.folder(both))
+    pin('recomposed both manifest', support.file(together.manifest))
+  end)
+
+  suite.it('refuses sources that are missing or the wrong size', function()
+    local out = scratch('h3', 'recompose-refused')
+    local partial, wrong = scratch('h3', 'recompose-partial'), scratch('h3', 'recompose-wrong')
+
+    expect(function()
+      h3.recomposeChrome { output = out }
+    end).toThrow 'h3-tools: one of h3ui or morrowind is required'
+
+    expect(support.files(out)).toEqual {}
+
+    expect(function()
+      h3.recomposeChrome { h3ui = partial, output = out }
+    end).toThrow 'missing H3UI '
+
+    for _, name in support.files(chrome()) do
+      jess.fs.copy(join(chrome(), name), join(wrong, name))
+    end
+
+    magick.write(join(wrong, 'frame_caption.dds'), magick.new(260, 21))
+
+    expect(function()
+      h3.recomposeChrome { h3ui = wrong, output = out }
+    end).toThrow 'caption source has wrong size'
+
+    expect(function()
+      h3.recomposeChrome { morrowind = partial, output = out }
+    end).toThrow 'missing menu_thick_border top_left'
+  end)
+end)
+
+suite.describe('atlas', function()
+  for _, mode in AtlasModes do
+    suite.it(`makes an atlas {mode.name}`, function()
+      local out = scratch('atlas', 'modes')
+      local input = photo(out, 'source.png', 24, 16, 55)
+      local output = join(out, `{mode.name}.dds`)
+
+      local result = atlas.generate {
+        input = input,
+        output = output,
+        rows = 2,
+        cols = 3,
+        mask = mode.mask,
+        width = mode.width,
+        delete = mode.delete,
+      }
+
+      expect(result).toEqual { output = output, width = 72, height = 32, rows = 2, cols = 3, tiles = 6 }
+      pin(`atlas {mode.name}`, support.file(output))
+    end)
+  end
+
+  suite.it('makes an atlas of one tile, and of a column of them', function()
+    local out = scratch('atlas', 'shapes')
+    local input = photo(out, 'source.png', 24, 16, 55)
+
+    for _, mask in { false, true } do
+      local single, column = join(out, `single-{mask}.png`), join(out, `column-{mask}.dds`)
+
+      expect(atlas.generate { input = input, output = single, rows = 1, cols = 1, mask = mask }).toEqual {
+        output = single,
+        width = 24,
+        height = 16,
+        rows = 1,
+        cols = 1,
+        tiles = 1,
+      }
+
+      expect(atlas.generate { input = input, output = column, rows = 7, cols = 1, mask = mask, width = mask }).toEqual {
+        output = column,
+        width = 24,
+        height = 112,
+        rows = 7,
+        cols = 1,
+        tiles = 7,
+      }
+
+      pin(`atlas single {mask}`, support.file(single))
+      pin(`atlas column {mask}`, support.file(column))
+    end
+  end)
+
+  suite.it('takes only true for a switch', function()
+    local out = scratch('atlas', 'switches')
+    local input = photo(out, 'source.png', 24, 16, 55)
+    local output = join(out, 'truthy.dds')
+    local loose = (atlas.generate :: unknown) :: (options: { [string]: unknown }) -> unknown
+
+    loose { input = input, output = output, rows = 2, cols = 3, mask = 1, width = 'yes', delete = 1 }
+    pin('atlas switches not true', support.file(output))
+  end)
+
+  suite.it('refuses to work without an input, an output, rows and columns', function()
+    local out = scratch('atlas', 'refused')
+    local input = photo(out, 'source.png', 24, 16, 55)
+
+    expect(function()
+      atlas.generate { output = join(out, 'atlas.dds'), rows = 2, cols = 3 }
+    end).toThrow 'atlas: input required'
+
+    expect(function()
+      atlas.generate { input = input, rows = 2, cols = 3 }
+    end).toThrow 'atlas: output required'
+
+    expect(function()
+      atlas.generate { input = input, output = join(out, 'atlas.dds'), cols = 3 }
+    end).toThrow 'atlas: rows required'
+
+    expect(function()
+      atlas.generate { input = input, output = join(out, 'atlas.dds'), rows = 2 }
+    end).toThrow 'atlas: cols required'
+
+    expect(support.files(out)).toEqual { 'source.png' }
+  end)
+end)
+
+suite.describe('material variants', function()
+  --- A catalog of two materials and a row too short to be one, and the photos it names.
+  local function catalog(name: string): (string, string)
+    local folder = scratch('variants', name)
+    local {slate, short, oak} = CatalogRows
+
+    photo(folder, 'slate.png', 100, 80, 71)
+    photo(folder, 'oak.png', 70, 90, 72)
+
+    return plant(folder, 'materials.tsv', `{CatalogHeader}\r\n{slate}\n\n{short}\r\n{oak}\n`), folder
+  end
+
+  suite.it('builds every material of a catalog, with previews and site data', function()
+    local materials, folder = catalog 'every'
+    local install, static = join(folder, 'install'), join(folder, 'static', 'previews')
+    local siteData = join(folder, 'site', 'data', 'materials.json')
+
+    local result = variants.build {
+      materials = materials,
+      sourceDir = folder,
+      installDir = install,
+      staticDir = static,
+      siteData = siteData,
+    }
+
+    expect(result).toEqual {
+      count = 2,
+      built = {
+        { stem = 'slate', cropX = 3, cropY = 0, output = join(install, 'chrome', 'slate.dds') },
+        { stem = 'oak', cropX = 0, cropY = 0, output = join(install, 'chrome', 'oak.dds') },
+      },
+    }
+
+    expect(jess.fs.read(siteData)).toBe(
+      '{\n  "materials": [\n'
+        .. '    {"id": "slate", "family": "Stone", "name": "Slate \\"Grey\\"", "photo": "slate.png", "crop": [3, 0],'
+        .. ' "url": "https://example.test/slate", "author": "A. Mason", "license": "CC0"},\n'
+        .. '    {"id": "oak", "family": "Wood", "name": "Oak\\\\Plank", "photo": "oak.png", "crop": [0, 0],'
+        .. ' "url": "https://example.test/oak", "author": "J. Joiner", "license": "CC-BY"}'
+        .. '\n  ]\n}\n'
+    )
+
+    expect(support.files(static)).toEqual { 'oak.png', 'slate.png' }
+    pin('variants slate', support.file(join(install, 'chrome', 'slate.dds')))
+    pin('variants oak', support.file(join(install, 'chrome', 'oak.dds')))
+    pin('variants slate preview', support.file(join(static, 'slate.png')))
+    pin('variants oak preview', support.file(join(static, 'oak.png')))
+    pin('variants work', support.folder(join(install, '.st4sh-material-work')))
+  end)
+
+  suite.it('builds only the stems asked for, cropped at random from a seed', function()
+    local materials, folder = catalog 'random'
+    local install, work = join(folder, 'install'), join(folder, 'work')
+
+    local result = variants.build {
+      materials = materials,
+      sourceDir = folder,
+      installDir = install,
+      workDir = work,
+      stems = { 'oak', 'elm' },
+      randomCrop = true,
+      seed = 12,
+    }
+
+    expect(result.count).toBe(1)
+    expect(result.built[1].stem).toBe 'oak'
+    expect(result.built[1].output).toBe(join(install, 'chrome', 'oak.dds'))
+    pin('variants random crop', `{result.built[1].cropX},{result.built[1].cropY}`)
+    pin('variants random oak', support.file(join(install, 'chrome', 'oak.dds')))
+    expect(support.files(install)).toEqual { 'chrome/oak.dds' }
+    pin('variants random work', support.folder(work))
+  end)
+
+  suite.it('crops every material where it is told', function()
+    local materials, folder = catalog 'cropped'
+    local install = join(folder, 'install')
+
+    local result = variants.build {
+      materials = materials,
+      sourceDir = folder,
+      installDir = install,
+      stems = { 'slate' },
+      materialCrop = { 7, 0 },
+      randomCrop = true,
+    }
+
+    expect(result).toEqual {
+      count = 1,
+      built = { { stem = 'slate', cropX = 7, cropY = 0, output = join(install, 'chrome', 'slate.dds') } },
+    }
+
+    pin('variants cropped slate', support.file(join(install, 'chrome', 'slate.dds')))
+  end)
+
+  suite.it('refuses a catalog nothing matches, and a call without its folders', function()
+    local materials, folder = catalog 'refused'
+    local install = join(folder, 'install')
+
+    expect(function()
+      variants.build { materials = materials, sourceDir = folder, installDir = install, stems = { 'elm' } }
+    end).toThrow 'No materials matched.'
+
+    expect(function()
+      variants.build { materials = plant(folder, 'empty.tsv', CatalogHeader .. '\n'), sourceDir = folder, installDir = install }
+    end).toThrow 'No materials matched.'
+
+    expect(function()
+      variants.build { sourceDir = folder, installDir = install }
+    end).toThrow 'material variants: materials TSV required'
+
+    expect(function()
+      variants.build { materials = materials, installDir = install }
+    end).toThrow 'material variants: sourceDir required'
+
+    expect(function()
+      variants.build { materials = materials, sourceDir = folder }
+    end).toThrow 'material variants: installDir required'
+
+    expect(jess.fs.exists(install)).toBe(false)
+  end)
+end)
+
+return suite

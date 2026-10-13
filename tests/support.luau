@@ -1,0 +1,130 @@
+--!strict
+--!native
+-- What the suites share: a folder of their own under the harness's scratch root, pictures made
+-- from a seed, fingerprints of the files a generator left behind, and the goldens every one is
+-- held to, which were recorded from the package as it was imported.
+local bytes = require '@dream/bytes'
+local magick = require '@magick'
+local test = require '@jess/test'
+
+export type Image = typeof(magick.new(1, 1))
+
+--- A folder of a suite's own under the harness's scratch root, made if it is not there.
+local function scratch(...: string): string
+  local root = assert(rawget(_G, 'scratchRoot') :: string?, 'the case needs a scratchRoot')
+  local folder = jess.fs.join(root, 'st4sh-scripts', ...)
+
+  jess.fs.createDir(folder)
+
+  return folder
+end
+
+--- A picture of noise in every channel, from a xorshift32 generator: a quarter of its pixels
+--- clear, a quarter opaque, and the rest anything.
+local function picture(width: number, height: number, seed: number): Image
+  local state = seed
+  local pixels = buffer.create(width * height * 4)
+
+  local function random(bound: number): number
+    state = bit32.bxor(state, bit32.lshift(state, 13))
+    state = bit32.bxor(state, bit32.rshift(state, 17))
+    state = bit32.bxor(state, bit32.lshift(state, 5))
+
+    return state % bound
+  end
+
+  for offset = 0, buffer.len(pixels) - 4, 4 do
+    local kind = random(4)
+    local alpha = if kind == 0 then 0 elseif kind == 1 then 255 else random(256)
+
+    buffer.writeu8(pixels, offset, random(256))
+    buffer.writeu8(pixels, offset + 1, random(256))
+    buffer.writeu8(pixels, offset + 2, random(256))
+    buffer.writeu8(pixels, offset + 3, alpha)
+  end
+
+  return magick.fromRGBA(width, height, pixels)
+end
+
+--- The length of some bytes and their CRC-32.
+local function digest(data: buffer | string): string
+  local length = if type(data) == 'string' then #data else buffer.len(data)
+
+  return `{length}:{string.format('%08x', bytes.crc32(data))}`
+end
+
+--- The length of a file and the CRC-32 of its bytes.
+local function file(path: string): string
+  return digest(assert(jess.fs.read(path), `{path} is not there`))
+end
+
+--- Every file under a folder, by its path from the folder, sorted: `jess.fs.list` gives names in
+--- whatever order the filesystem keeps them.
+local function files(folder: string): { string }
+  local found: { string } = {}
+
+  local function walk(directory: string, prefix: string)
+    for _, name in jess.fs.list(directory) do
+      local path = jess.fs.join(directory, name)
+
+      if jess.fs.isDir(path) then
+        walk(path, `{prefix}{name}/`)
+      else
+        table.insert(found, prefix .. name)
+      end
+    end
+  end
+
+  walk(folder, '')
+  table.sort(found)
+
+  return found
+end
+
+--- How many files under a folder have a path matching a pattern (all of them without one), and
+--- the CRC-32 of the list of their paths and digests: one fingerprint for a generator's output.
+local function folder(root: string, pattern: string?): string
+  local lines: { string } = {}
+
+  for _, path in files(root) do
+    if pattern and not string.find(path, pattern) then continue end
+
+    table.insert(lines, `{path} {file(jess.fs.join(root, path))}\n`)
+  end
+
+  return `{#lines}:{string.format('%08x', bytes.crc32(table.concat(lines)))}`
+end
+
+--- Holds named observations to their goldens. `pin` notes a miss instead of raising, and
+--- `settle`, run after each case, fails the case with every miss written as a line of the golden
+--- table, so one run of a suite says what all of its goldens would have to be.
+local function goldens(recorded: { [string]: string }): ((name: string, observed: string) -> (), () -> ())
+  local misses: { string } = {}
+  local seen: { [string]: boolean } = {}
+
+  local function pin(name: string, observed: string)
+    assert(not seen[name], `the golden '{name}' is pinned twice`)
+    seen[name] = true
+
+    if recorded[name] ~= observed then table.insert(misses, `['{name}'] = '{observed}',`) end
+  end
+
+  local function settle()
+    local missed = table.concat(misses, '\n')
+
+    table.clear(misses)
+    test.expect(missed).toBe ''
+  end
+
+  return pin, settle
+end
+
+return table.freeze {
+  digest = digest,
+  file = file,
+  files = files,
+  folder = folder,
+  goldens = goldens,
+  picture = picture,
+  scratch = scratch,
+}

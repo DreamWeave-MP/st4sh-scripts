@@ -5,7 +5,7 @@ id = "org.dreamweave.st4sh-scripts"
 version = "0.1.1"
 jess_api = "1"
 include = ["src", "assets", "LICENSES", "README.md"]
-tests = []
+tests = ["tests/masks.luau", "tests/morrowind.luau", "tests/artwork.luau", "tests/cli.luau"]
 
 [dependencies]
 "org.dreamweave.magick" = "^0.1.2"
