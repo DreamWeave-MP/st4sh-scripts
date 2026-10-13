@@ -1,123 +1,178 @@
+--!strict
 --!native
 --!optimize 2
 -- COD3X artwork generators ported from hero.sh, scope.sh, mark.sh, and generate.sh.
 -- Text coverage is compiled from the supplied Oxanium WOFF2 through native ImageMagick.
-local magick=require('@magick')
-local masks=require('@st4sh/scripts.cod3x-masks')
+local magick = require '@magick'
+local masks = require '@st4sh/scripts.cod3x-masks'
 
-local M={}
+local Cod3x = {}
 
-local BG='#101010'
-local PANEL='#18151f'
-local PURPLE='#55006b'
-local VIOLET='#b48cff'
-local TEXT='#f4f1f7'
-local MUTED='#aeb4c0'
-local GREEN='#7ee2a8'
-local BLUE='#83c7ff'
-local GOLD='#f2c66d'
+type Image = magick.Image
 
-local function ensureDir(path)
-    if jess.fs.exists(path) then
-        if not jess.fs.isDir(path) then error(path..' exists and is not a directory',2) end
-    else
-        jess.fs.createDir(path)
-    end
+--- The folder the artwork is written into, the one the process stands in when none is given,
+--- and the path of a piece that goes somewhere else: `path` for the hero and for the scope,
+--- `iconPath` and `badgePath` for the mark.
+export type Options = { output: string?, path: string?, iconPath: string?, badgePath: string? }
+
+export type Hero = { header: string, width: number, height: number }
+export type Scope = { scope: string, width: number, height: number }
+export type Mark = { icon: string, badge: string }
+export type All = { hero: Hero, scope: Scope, mark: Mark }
+
+local Background = '#101010'
+local Panel = '#18151f'
+local Purple = '#55006b'
+local Violet = '#b48cff'
+local Text = '#f4f1f7'
+local Muted = '#aeb4c0'
+local Green = '#7ee2a8'
+local Blue = '#83c7ff'
+local Gold = '#f2c66d'
+
+--- The corners of the scope's six cards, left to right and then down.
+local CardCorners = {
+  { 64, 270, 608, 410 },
+  { 692, 270, 1236, 410 },
+  { 64, 440, 608, 580 },
+  { 692, 440, 1236, 580 },
+  { 64, 610, 608, 750 },
+  { 692, 610, 1236, 750 },
+}
+
+--- The color of each card's title.
+local CardColors = { Green, Violet, Blue, Gold, '#ff8f70', Muted }
+
+local function ensureDir(path: string)
+  if not jess.fs.exists(path) then
+    jess.fs.createDir(path)
+  elseif not jess.fs.isDir(path) then
+    error(path .. ' exists and is not a directory', 2)
+  end
 end
 
-local function overAlpha(out,name,color)
-    out:overMask(masks.get(name),color)
-    return out
+--- Lays the text a mask holds over an image, in a color.
+local function stamp(image: Image, name: string, color: string)
+  image:overMask(masks.get(name), color)
 end
 
-local function write(path,img)
-    magick.write(path,img)
-    return path
+function Cod3x.generateHero(options: Options?): Hero
+  local settings: Options = options or {}
+  local folder = settings.output or '.'
+
+  ensureDir(folder)
+
+  local out = magick.new(1300, 372, Background)
+
+  out:strokeRect(10, 10, 1290, 362, Violet, 2)
+  out:strokeRect(25, 25, 1275, 347, Violet, 1)
+  out:line(54, 78, 1246, 78, Purple, 1)
+  out:line(54, 315, 1246, 315, Purple, 1)
+  stamp(out, 'hero.title', Text)
+  stamp(out, 'hero.sub', Violet)
+  stamp(out, 'hero.tag', Text)
+  stamp(out, 'hero.meta', Muted)
+
+  -- @magick intentionally has no WebP codec yet; preserve the image pixels as PNG.
+  local path = settings.path or jess.fs.join(folder, 'nexusHeader.png')
+
+  magick.write(path, out)
+
+  return { header = path, width = out.width, height = out.height }
 end
 
-function M.generateHero(options)
-    options=options or {}
-    local outdir=options.output or '.'
-    ensureDir(outdir)
-    local out=magick.new(1300,372,BG)
-    out:strokeRect(10,10,1290,362,VIOLET,2)
-    out:strokeRect(25,25,1275,347,VIOLET,1)
-    out:line(54,78,1246,78,PURPLE,1)
-    out:line(54,315,1246,315,PURPLE,1)
-    overAlpha(out,'hero.title',TEXT)
-    overAlpha(out,'hero.sub',VIOLET)
-    overAlpha(out,'hero.tag',TEXT)
-    overAlpha(out,'hero.meta',MUTED)
-    -- @magick intentionally has no WebP codec yet; preserve the image pixels as PNG.
-    local path=options.path or jess.fs.join(outdir,'nexusHeader.png')
-    write(path,out)
-    return {header=path,width=out.width,height=out.height}
+function Cod3x.generateScope(options: Options?): Scope
+  local settings: Options = options or {}
+  local folder = settings.output or '.'
+
+  ensureDir(folder)
+
+  local out = magick.new(1300, 900, Background)
+
+  out:strokeRect(20, 20, 1280, 880, Violet, 2)
+  out:line(38, 38, 1262, 38, Violet, 1)
+  out:line(38, 862, 1262, 862, Violet, 1)
+  out:line(64, 188, 1236, 188, Purple, 1)
+  out:line(64, 832, 1236, 832, Purple, 1)
+  stamp(out, 'scope.kicker', Text)
+  stamp(out, 'scope.title', Violet)
+  stamp(out, 'scope.sub', Muted)
+
+  for _, corners in CardCorners do
+    out:roundRect(corners[1], corners[2], corners[3], corners[4], 6, Purple, 1)
+  end
+
+  for card, color in CardColors do
+    stamp(out, `scope.card.title.{card - 1}`, color)
+    stamp(out, `scope.card.detail.{card - 1}`, Text)
+  end
+
+  local path = settings.path or jess.fs.join(folder, 'scope.png')
+
+  magick.write(path, out)
+
+  return { scope = path, width = out.width, height = out.height }
 end
 
-function M.generateScope(options)
-    options=options or {}
-    local outdir=options.output or '.'
-    ensureDir(outdir)
-    local out=magick.new(1300,900,BG)
-    out:strokeRect(20,20,1280,880,VIOLET,2)
-    out:line(38,38,1262,38,VIOLET,1)
-    out:line(38,862,1262,862,VIOLET,1)
-    out:line(64,188,1236,188,PURPLE,1)
-    out:line(64,832,1236,832,PURPLE,1)
-    overAlpha(out,'scope.kicker',TEXT)
-    overAlpha(out,'scope.title',VIOLET)
-    overAlpha(out,'scope.sub',MUTED)
+function Cod3x.generateMark(options: Options?): Mark
+  local settings: Options = options or {}
+  local folder = settings.output or '.'
 
-    local boxes={{64,270,608,410},{692,270,1236,410},{64,440,608,580},{692,440,1236,580},{64,610,608,750},{692,610,1236,750}}
-    for _,b in boxes do out:roundRect(b[1],b[2],b[3],b[4],6,PURPLE,1) end
-    local colors={GREEN,VIOLET,BLUE,GOLD,'#ff8f70',MUTED}
-    for i=0,5 do
-        overAlpha(out,'scope.card.title.'..i,colors[i+1])
-        overAlpha(out,'scope.card.detail.'..i,TEXT)
-    end
-    local path=options.path or jess.fs.join(outdir,'scope.png')
-    write(path,out)
-    return {scope=path,width=out.width,height=out.height}
+  ensureDir(folder)
+
+  local icon = magick.new(512, 512, Background)
+
+  icon:strokeRect(24, 24, 488, 488, Violet, 4)
+  icon:strokeRect(42, 42, 470, 470, Purple, 2)
+  icon:line(72, 104, 440, 104, Purple, 2)
+  icon:line(72, 410, 440, 410, Purple, 2)
+  stamp(icon, 'mark.icon.c3', Violet)
+  stamp(icon, 'mark.icon.tag', Text)
+  stamp(icon, 'mark.icon.name', Muted)
+
+  local iconPath = settings.iconPath or jess.fs.join(folder, 'icon.png')
+
+  magick.write(iconPath, icon)
+
+  local badge = magick.new(1600, 1600, Background)
+
+  badge:strokeRect(58, 58, 1542, 1542, Violet, 5)
+  badge:strokeRect(88, 88, 1512, 1512, Purple, 2)
+  badge:line(150, 290, 1450, 290, Purple, 2)
+  badge:line(150, 1343, 1450, 1343, Purple, 2)
+  stamp(badge, 'mark.badge.c3', Violet)
+  stamp(badge, 'mark.badge.tag', Text)
+  stamp(badge, 'mark.badge.name', Muted)
+  stamp(badge, 'mark.badge.desc', Text)
+  stamp(badge, 'mark.badge.meta', Muted)
+
+  local badgePath = settings.badgePath or jess.fs.join(folder, 'badge.png')
+
+  magick.write(badgePath, badge)
+
+  return { icon = iconPath, badge = badgePath }
 end
 
-function M.generateMark(options)
-    options=options or {}
-    local outdir=options.output or '.'
-    ensureDir(outdir)
-    local icon=magick.new(512,512,BG)
-    icon:strokeRect(24,24,488,488,VIOLET,4)
-    icon:strokeRect(42,42,470,470,PURPLE,2)
-    icon:line(72,104,440,104,PURPLE,2)
-    icon:line(72,410,440,410,PURPLE,2)
-    overAlpha(icon,'mark.icon.c3',VIOLET)
-    overAlpha(icon,'mark.icon.tag',TEXT)
-    overAlpha(icon,'mark.icon.name',MUTED)
-    local iconPath=options.iconPath or jess.fs.join(outdir,'icon.png')
-    write(iconPath,icon)
+function Cod3x.generateAll(options: Options?): All
+  local settings: Options = options or {}
 
-    local badge=magick.new(1600,1600,BG)
-    badge:strokeRect(58,58,1542,1542,VIOLET,5)
-    badge:strokeRect(88,88,1512,1512,PURPLE,2)
-    badge:line(150,290,1450,290,PURPLE,2)
-    badge:line(150,1343,1450,1343,PURPLE,2)
-    overAlpha(badge,'mark.badge.c3',VIOLET)
-    overAlpha(badge,'mark.badge.tag',TEXT)
-    overAlpha(badge,'mark.badge.name',MUTED)
-    overAlpha(badge,'mark.badge.desc',TEXT)
-    overAlpha(badge,'mark.badge.meta',MUTED)
-    local badgePath=options.badgePath or jess.fs.join(outdir,'badge.png')
-    write(badgePath,badge)
-    return {icon=iconPath,badge=badgePath}
+  return {
+    hero = Cod3x.generateHero(settings),
+    scope = Cod3x.generateScope(settings),
+    mark = Cod3x.generateMark(settings),
+  }
 end
 
-function M.generateAll(options)
-    options=options or {}
-    local r={}
-    r.hero=M.generateHero(options)
-    r.scope=M.generateScope(options)
-    r.mark=M.generateMark(options)
-    return r
-end
+Cod3x.palette = {
+  BG = Background,
+  PANEL = Panel,
+  PURPLE = Purple,
+  VIOLET = Violet,
+  TEXT = Text,
+  MUTED = Muted,
+  GREEN = Green,
+  BLUE = Blue,
+  GOLD = Gold,
+}
 
-M.palette={BG=BG,PANEL=PANEL,PURPLE=PURPLE,VIOLET=VIOLET,TEXT=TEXT,MUTED=MUTED,GREEN=GREEN,BLUE=BLUE,GOLD=GOLD}
-return M
+return Cod3x
