@@ -1,0 +1,426 @@
+--!strict
+--!native
+-- The St4sh scripts, timed from Luau through their public API: the masks the package carries, the
+-- Morrowind menu generator, COD3X, the H3 header, icon and chrome, the progressive atlas, the
+-- material variants and the command line's dispatch. Run by
+-- `jess run --package . --package-path .. --capability filesystem.read --capability
+-- filesystem.write bench/bench.luau <folder> [filter] [record]`, on a release build. Prints one
+-- line per workload: its name, a tab, and the seconds one call takes.
+--
+-- Every generator writes files, and `jess.fs.write` syncs each one to the disk before it
+-- answers: on a disk that is most of a generator's time, and on a tmpfs none of it, so the
+-- folder given decides which of the two is measured. Every workload's files, or the masks it
+-- inflated, are held to the fingerprint the package gave as imported, so a path that stopped
+-- doing the work, or does other work, fails here instead of posting a time. With `record` the
+-- fingerprints are printed as lines of the table below instead of being checked.
+local bytes = require '@dream/bytes'
+local magick = require '@magick'
+local scripts = require '@st4sh/scripts'
+
+local cod3xMasks = require '@st4sh/scripts.cod3x-masks'
+local fontMasks = require '@st4sh/scripts.morrowind-font-masks'
+local h3Masks = require '@st4sh/scripts.h3-masks'
+local oracleMasks = require '@st4sh/scripts.morrowind-oracle-masks'
+local spiralMasks = require '@st4sh/scripts.morrowind-spiral-masks'
+
+-- A build without the verified toolchain runs Luau slower than a release does, so a number from
+-- one says nothing about what ships.
+if not jess.bench.verified then
+  error('st4sh-scripts bench: this jess was built without the verified toolchain: measure on a release build', 0)
+end
+
+type Mask = { width: number, height: number, data: buffer }
+
+--- What a workload made: the path of a file or of a folder of them, or the masks it inflated.
+type Made = string | { Mask }
+
+local folder: string?, filter: string?, mode: string? = ...
+local only = if filter and filter ~= '' then filter else nil
+local recording = mode == 'record'
+local join = jess.fs.join
+
+if not folder then error('st4sh-scripts bench: a folder to write into is required', 0) end
+
+local root = join(folder, 'st4sh-scripts-bench')
+
+--- What each workload leaves: the length of a file and the CRC-32 of its bytes, or how many
+--- files a folder holds, or how many masks were inflated, and the CRC-32 of the list of them.
+local Expected: { [string]: string } = {
+  ['masks: every font mask'] = '225:0d54dc9b',
+  ['masks: every h3 mask'] = '8:bc286aff',
+  ['masks: every cod3x mask'] = '27:5416d0f2',
+  ['masks: every oracle and spiral mask'] = '11:0f985302',
+  ['morrowind: a menu theme'] = '318:9f864f6b',
+  ['morrowind: a menu theme, DejaVu at 14'] = '318:5eff845f',
+  ['cod3x: hero'] = '13934:3e747982',
+  ['cod3x: scope'] = '41438:57915ecb',
+  ['cod3x: icon and badge'] = '2:6648abbc',
+  ['h3: header, clean and classified'] = '2:dc5879a3',
+  ['h3: logo icon'] = '252018:b89f530d',
+  ['h3: chrome sources'] = '12:9d61a354',
+  ['h3: recompose H3UI'] = '2:67315605',
+  ['h3: recompose a Morrowind theme'] = '3:ef92883e',
+  ['atlas: sixteen tiles, scrolled'] = '4194432:f375daaa',
+  ['atlas: sixteen tiles, masked by rows'] = '4194432:6ae78d26',
+  ['atlas: sixteen tiles, masked by columns'] = '4194432:45c0c4c4',
+  ['atlas: sixteen tiles, deleted by rows'] = '4194432:c9e5c7d7',
+  ['atlas: sixteen tiles, deleted by columns'] = '4194432:c4bec9d5',
+  ['variants: one material, with its preview and site data'] = '17:0bd15c69',
+  ['cli: a command dispatched to a generator with nothing to make'] = '0:00000000',
+}
+
+local Fonts = { 'DejaVuLGCSansMono', 'DemonicLetters', 'MysticCards' }
+local MenuLabels = { 'Credits', 'Exit', 'Load', 'New', 'Options', 'Papa_Bless', 'Return', 'Save' }
+
+local JournalLabels = {
+  'Active',
+  'All',
+  'Cancel',
+  'Close',
+  'Journal',
+  'Next',
+  'Options',
+  'Prev',
+  'Quests',
+  'Take',
+  'Topics',
+}
+
+local H3Names = {
+  'header.left_text',
+  'header.h3_full',
+  'header.approved',
+  'logo.text',
+  'logo.h3_full',
+  'logo.icon_h3_full',
+  'logo.stamp',
+  'logo.purple_note',
+}
+
+local Cod3xNames = {
+  'hero.meta',
+  'hero.sub',
+  'hero.tag',
+  'hero.title',
+  'mark.badge.c3',
+  'mark.badge.desc',
+  'mark.badge.meta',
+  'mark.badge.name',
+  'mark.badge.tag',
+  'mark.icon.c3',
+  'mark.icon.name',
+  'mark.icon.tag',
+  'scope.kicker',
+  'scope.sub',
+  'scope.title',
+  'scope.card.title.0',
+  'scope.card.detail.0',
+  'scope.card.title.1',
+  'scope.card.detail.1',
+  'scope.card.title.2',
+  'scope.card.detail.2',
+  'scope.card.title.3',
+  'scope.card.detail.3',
+  'scope.card.title.4',
+  'scope.card.detail.4',
+  'scope.card.title.5',
+  'scope.card.detail.5',
+}
+
+local OracleNames = {
+  'equip_frame_base',
+  'enchant_frame_base',
+  'tx_cursor',
+  'omw_menu_scroll_up',
+  'omw_menu_scroll_down',
+  'omw_menu_scroll_left',
+  'omw_menu_scroll_right',
+  'menu_icon_magic_equip_spiral',
+  'menu_icon_magic_equip_spiral_large',
+}
+
+--- Each way the atlas makes its tiles, by the options that choose it.
+local AtlasModes = {
+  { name = 'scrolled', mask = false, width = false, delete = false },
+  { name = 'masked by rows', mask = true, width = false, delete = false },
+  { name = 'masked by columns', mask = true, width = true, delete = false },
+  { name = 'deleted by rows', mask = true, width = false, delete = true },
+  { name = 'deleted by columns', mask = true, width = true, delete = true },
+}
+
+local Catalog = 'stem\tfamily\tname\tphoto\tcropX\tcropY\turl\tauthor\tlicense\n'
+  .. 'slate\tStone\tSlate\tmaterial.png\t40\t0\thttps://example.test/slate\tA. Mason\tCC0\n'
+
+local function median(samples: { number }): number
+  table.sort(samples)
+
+  return samples[(#samples + 1) // 2]
+end
+
+--- The length of some bytes and their CRC-32.
+local function digest(data: buffer | string): string
+  local length = if type(data) == 'string' then #data else buffer.len(data)
+
+  return `{length}:{string.format('%08x', bytes.crc32(data))}`
+end
+
+--- How many lines there are, and the CRC-32 of them all.
+local function listed(lines: { string }): string
+  return `{#lines}:{string.format('%08x', bytes.crc32(table.concat(lines)))}`
+end
+
+--- Every file under a folder by its path from the folder and its digest, a line each: the names
+--- sorted, since `jess.fs.list` gives them in whatever order the filesystem keeps them.
+local function gather(directory: string, prefix: string, lines: { string })
+  local names = jess.fs.list(directory)
+
+  table.sort(names)
+
+  for _, name in names do
+    local path = join(directory, name)
+
+    if jess.fs.isDir(path) then
+      gather(path, `{prefix}{name}/`, lines)
+    else
+      table.insert(lines, `{prefix}{name} {digest(assert(jess.fs.read(path)))}\n`)
+    end
+  end
+end
+
+--- The fingerprint of what a workload made.
+local function fingerprint(made: Made): string
+  if type(made) == 'table' then
+    return listed([for mask in made => `{mask.width}x{mask.height} {digest(mask.data)}\n`])
+  end
+
+  if not jess.fs.isDir(made) then return digest(assert(jess.fs.read(made), `{made} is not there`)) end
+
+  local lines: { string } = {}
+
+  gather(made, '', lines)
+
+  return listed(lines)
+end
+
+--- A picture of noise in every channel, from a xorshift32 generator: a quarter of its pixels
+--- clear, a quarter opaque, and the rest anything. Written as a PNG; its path is returned.
+local function photo(name: string, width: number, height: number, seed: number): string
+  local state = seed
+  local pixels = buffer.create(width * height * 4)
+
+  local function random(bound: number): number
+    state = bit32.bxor(state, bit32.lshift(state, 13))
+    state = bit32.bxor(state, bit32.rshift(state, 17))
+    state = bit32.bxor(state, bit32.lshift(state, 5))
+
+    return state % bound
+  end
+
+  for offset = 0, buffer.len(pixels) - 4, 4 do
+    local kind = random(4)
+    local alpha = if kind == 0 then 0 elseif kind == 1 then 255 else random(256)
+
+    buffer.writeu8(pixels, offset, random(256))
+    buffer.writeu8(pixels, offset + 1, random(256))
+    buffer.writeu8(pixels, offset + 2, random(256))
+    buffer.writeu8(pixels, offset + 3, alpha)
+  end
+
+  return magick.write(join(root, name), magick.fromRGBA(width, height, pixels))
+end
+
+-- A full collection, run between batches, so one batch's garbage isn't the next one's collection.
+local collect = jess.bench.collect
+
+--- Times a workload: warmed up, then the median of seven batches of a size that takes about a
+--- tenth of a second. What the first call made, and what one more after the last batch made, is
+--- held to its fingerprint outside the time. `prepare` runs once, before any of it, and only when
+--- the workload is one the filter keeps.
+local function workload(name: string, body: () -> Made, prepare: (() -> ())?)
+  if only and not string.find(name, only, 1, true) then return end
+
+  local function verify(made: Made)
+    local observed = fingerprint(made)
+
+    if recording then
+      print(`  ['{name}'] = '{observed}',`)
+    elseif observed ~= Expected[name] then
+      error(`st4sh-scripts bench: {name} left {observed}, not {Expected[name]}`, 0)
+    end
+  end
+
+  if prepare then prepare() end
+
+  collect()
+  verify(body())
+
+  local start = os.clock()
+
+  body()
+
+  local once = math.max(os.clock() - start, 1e-7)
+  local iterations = math.max(1, math.floor(0.1 / once))
+  local samples: { number } = {}
+
+  for batch = 1, 7 do
+    collect()
+    start = os.clock()
+
+    for _ = 1, iterations do
+      body()
+    end
+
+    samples[batch] = (os.clock() - start) / iterations
+  end
+
+  if not recording then
+    verify(body())
+    print(`{name}\t{string.format('%.9f', median(samples))}`)
+  end
+end
+
+jess.fs.createDir(root)
+
+local crowbar = photo('crowbar.png', 240, 360, 9)
+local material = photo('material.png', 640, 600, 33)
+local picture = photo('picture.png', 256, 256, 55)
+
+workload('masks: every font mask', function(): Made
+  local masks: { Mask } = {}
+
+  for _, font in Fonts do
+    for _, label in JournalLabels do
+      table.insert(masks, fontMasks.get(`{font}|j|16|{label}|0`))
+    end
+
+    for _, kind in { 'p', 'pfull' } do
+      for _, size in { 14, 32 } do
+        for _, label in MenuLabels do
+          table.insert(masks, fontMasks.get(`{font}|{kind}|{size}|{label}|0`))
+          table.insert(masks, fontMasks.get(`{font}|{kind}|{size}|{label}|20`))
+        end
+      end
+    end
+  end
+
+  return masks
+end)
+
+workload('masks: every h3 mask', function(): Made
+  return [for name in H3Names => h3Masks.get(name)]
+end)
+
+workload('masks: every cod3x mask', function(): Made
+  return [for name in Cod3xNames => cod3xMasks.get(name)]
+end)
+
+workload('masks: every oracle and spiral mask', function(): Made
+  local masks: { Mask } = [for name in OracleNames => oracleMasks.get(name)]
+
+  table.insert(masks, spiralMasks.get 'enchant_frame_spiral')
+  table.insert(masks, spiralMasks.get 'enchant_frame_spiral_large')
+
+  return masks
+end)
+
+workload('morrowind: a menu theme', function(): Made
+  return scripts.morrowind.generate({ output = join(root, 'theme') }).output
+end)
+
+workload('morrowind: a menu theme, DejaVu at 14', function(): Made
+  local options = { output = join(root, 'theme-dejavu'), font = 'DejaVuLGCSansMono', primarySize = 14, seed = 77 }
+
+  return scripts.morrowind.generate(options).output
+end)
+
+workload('cod3x: hero', function(): Made
+  return scripts.cod3x.generateHero({ output = join(root, 'cod3x') }).header
+end)
+
+workload('cod3x: scope', function(): Made
+  return scripts.cod3x.generateScope({ output = join(root, 'cod3x') }).scope
+end)
+
+workload('cod3x: icon and badge', function(): Made
+  scripts.cod3x.generateMark { output = join(root, 'cod3x-mark') }
+
+  return join(root, 'cod3x-mark')
+end)
+
+workload('h3: header, clean and classified', function(): Made
+  local options = {
+    crowbar = crowbar,
+    cleanOutput = join(root, 'header', 'clean.png'),
+    output = join(root, 'header', 'classified.png'),
+  }
+
+  scripts.h3.generateHeader(options)
+
+  return join(root, 'header')
+end, function()
+  jess.fs.createDir(join(root, 'header'))
+end)
+
+workload('h3: logo icon', function(): Made
+  return scripts.h3.generateLogo({ crowbar = crowbar, output = join(root, 'logo'), target = 'icon' }).icon
+end)
+
+workload('h3: chrome sources', function(): Made
+  return scripts.h3.generateChromeSources({ material = material, output = join(root, 'chrome') }).output
+end)
+
+workload('h3: recompose H3UI', function(): Made
+  local sources = join(root, 'recompose-sources', 'Textures', 'h3ui')
+
+  scripts.h3.recomposeChrome { h3ui = sources, output = join(root, 'recomposed') }
+
+  return join(root, 'recomposed')
+end, function()
+  scripts.h3.generateChromeSources { material = material, output = join(root, 'recompose-sources') }
+end)
+
+workload('h3: recompose a Morrowind theme', function(): Made
+  scripts.h3.recomposeChrome { morrowind = join(root, 'recompose-theme'), output = join(root, 'recomposed-morrowind') }
+
+  return join(root, 'recomposed-morrowind')
+end, function()
+  scripts.morrowind.generate { output = join(root, 'recompose-theme') }
+end)
+
+for _, atlasMode in AtlasModes do
+  workload(`atlas: sixteen tiles, {atlasMode.name}`, function(): Made
+    local options = {
+      input = picture,
+      output = join(root, 'atlas.dds'),
+      rows = 4,
+      cols = 4,
+      mask = atlasMode.mask,
+      width = atlasMode.width,
+      delete = atlasMode.delete,
+    }
+
+    return scripts.atlas.generate(options).output
+  end)
+end
+
+workload('variants: one material, with its preview and site data', function(): Made
+  local options = {
+    materials = join(root, 'materials.tsv'),
+    sourceDir = root,
+    installDir = join(root, 'variants', 'install'),
+    staticDir = join(root, 'variants', 'static'),
+    siteData = join(root, 'variants', 'materials.json'),
+  }
+
+  scripts.materialVariants.build(options)
+
+  return join(root, 'variants')
+end, function()
+  jess.fs.write(join(root, 'materials.tsv'), Catalog)
+end)
+
+workload('cli: a command dispatched to a generator with nothing to make', function(): Made
+  scripts.cli.run('h3logo', { 'poster', crowbar, join(root, 'nothing') })
+
+  return join(root, 'nothing')
+end)
