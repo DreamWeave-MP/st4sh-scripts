@@ -1,242 +1,505 @@
+--!strict
 --!native
 --!optimize 2
 -- Port of generate_menu.sh to Jess/Luau. No subprocesses; all raster work is @magick.
+local fontMasks = require '@st4sh/scripts.morrowind-font-masks'
+local magick = require '@magick'
+local oracleMasks = require '@st4sh/scripts.morrowind-oracle-masks'
+local spiralMasks = require '@st4sh/scripts.morrowind-spiral-masks'
 
-local magick = require("@magick")
-local fontMasks = require("@st4sh/scripts.morrowind-font-masks")
-local spiralMasks = require("@st4sh/scripts.morrowind-spiral-masks")
-local oracleMasks = require("@st4sh/scripts.morrowind-oracle-masks")
+local Menu = {}
 
-local M = {}
+type Image = magick.Image
+type Mask = magick.Mask
+type Color = magick.Color
+type Source = magick.Source
 
-local function canonicalFont(name)
-    local k = string.lower(name or "MysticCards")
-    if k == "mysticcards" or k == "mystic cards" then return "MysticCards" end
-    if k == "dejavulgcsansmono" or k == "dejavulgcsansmono.ttf" or k == "dejavu lgc sans mono" then return "DejaVuLGCSansMono" end
-    if k == "demonicletters" or k == "demonicletters.ttf" or k == "demonic letters" then return "DemonicLetters" end
-    error("morrowind-ui: bundled font must be MysticCards, DejaVuLGCSansMono, or DemonicLetters", 2)
-end
-
-local function ensureDir(path)
-    if jess.fs.exists(path) then
-        if not jess.fs.isDir(path) then error(path .. " exists and is not a directory", 2) end
-    else
-        jess.fs.createDir(path)
-    end
-end
-
-local function alphaMask(img)
-    local b = buffer.create(img.width * img.height)
-    for y=0,img.height-1 do for x=0,img.width-1 do local _,_,_,a=img:get(x,y); buffer.writeu8(b,y*img.width+x,a) end end
-    return magick.mask(img.width,img.height,b)
-end
-
-local function maxMask(a,b)
-    local out=buffer.create(a.width*a.height)
-    for i=0,a.width*a.height-1 do buffer.writeu8(out,i,math.max(buffer.readu8(a.data,i),buffer.readu8(b.data,i))) end
-    return magick.mask(a.width,a.height,out)
-end
-
-local function scaleMaskAlpha(mask, amount)
-    local out=buffer.create(mask.width*mask.height)
-    for i=0,mask.width*mask.height-1 do buffer.writeu8(out,i,math.floor(buffer.readu8(mask.data,i)*amount+0.5)) end
-    return magick.mask(mask.width,mask.height,out)
-end
-
-
-local function applyAlpha(img, mask)
-    assert(img.width==mask.width and img.height==mask.height, "alpha mask geometry mismatch")
-    for y=0,img.height-1 do for x=0,img.width-1 do local r,g,b=img:get(x,y); img:set(x,y,r,g,b,buffer.readu8(mask.data,y*img.width+x)) end end
-    return img
-end
-
-local function write(outDir,name,img)
-    magick.writeDDS(jess.fs.join(outDir,name..".dds"),img)
-end
-
-local function textImage(font,kind,size,label,rotation,tile,secondary,strokeWidth,shadowRadius,shadowOpacity)
-    local mask = fontMasks.get(font.."|"..kind.."|"..tostring(size).."|"..label.."|"..tostring(rotation or 0))
-    if (strokeWidth or 0) <= 0 and (shadowOpacity or 0) <= 0 then return magick.paintMask(mask,tile) end
-    local stroke = magick.dilateMask(mask,math.max(1,math.floor((strokeWidth or 1)+0.5)))
-    local paintedStroke = magick.paintMask(stroke,secondary)
-    local paintedFill = magick.paintMask(mask,tile)
-    local out = magick.new(mask.width,mask.height)
-    if (shadowOpacity or 0) > 0 then
-        local combined=maxMask(mask,stroke)
-        local blurred=magick.blurMask(combined,shadowRadius or 0)
-        local shadow=magick.paintMask(scaleMaskAlpha(blurred,(shadowOpacity or 40)/100),secondary)
-        out:over(shadow)
-    end
-    out:over(paintedStroke)
-    out:over(paintedFill)
-    if kind == "p" then
-        local full = fontMasks.get(font.."|pfull|"..tostring(size).."|"..label.."|"..tostring(rotation or 0))
-        applyAlpha(out, full)
-    end
-    return out
-end
-
-local function frameTextures(outDir,xLength,yLength,thickness,dark,light,name,cornerSuffix)
-    local w=xLength+thickness*2; local h=yLength+thickness*2
-    local solid=magick.new(w,h); solid:rect(0,0,w-1,h-1,dark); solid:rect(thickness,thickness,xLength+thickness-1,yLength+thickness-1,light)
-    write(outDir,name.."_solid",solid)
-    local hollow=solid:clone()
-    for y=thickness*2,yLength-1 do for x=thickness*2,xLength-1 do local r,g,b= hollow:get(x,y); hollow:set(x,y,r,g,b,0) end end
-    write(outDir,name.."_hollow",hollow)
-    local center=solid:crop(xLength-thickness*2,yLength-thickness*2,thickness*2,thickness*2)
-    write(outDir,name.."_center",center)
-    local st=thickness*2; local innerX=xLength-st; local innerY=yLength-st
-    local leftSide=hollow:crop(st,h,0,0); local rightSide=hollow:crop(st,h,xLength,0)
-    write(outDir,name.."_left_side",leftSide); write(outDir,name.."_right_side",rightSide)
-    write(outDir,name.."_left",leftSide:crop(st,innerY,0,st)); write(outDir,name.."_right",rightSide:crop(st,innerY,0,st))
-    local topSide=hollow:crop(w,st,0,0); local bottomSide=hollow:crop(w,st,0,yLength)
-    write(outDir,name.."_top_side",topSide); write(outDir,name.."_bottom_side",bottomSide)
-    write(outDir,name.."_top",topSide:crop(innerX,st,st,0)); write(outDir,name.."_bottom",bottomSide:crop(innerX,st,st,0))
-    local suffix=cornerSuffix or "_corner"
-    write(outDir,name.."_top_left"..suffix,topSide:crop(st,st,0,0)); write(outDir,name.."_top_right"..suffix,topSide:crop(st,st,xLength,0))
-    write(outDir,name.."_bottom_left"..suffix,bottomSide:crop(st,st,0,0)); write(outDir,name.."_bottom_right"..suffix,bottomSide:crop(st,st,xLength,0))
-end
-
-local function radialTile(tile,size)
-    local w,h=size,size; local out=magick.new(w,h); local cx=(w-1)/2; local cy=(h-1)/2; local maxd=math.sqrt(cx*cx+cy*cy)
-    for y=0,h-1 do for x=0,w-1 do local r,g,b,a=tile:get(x%tile.width,y%tile.height); local dx=x-cx; local dy=y-cy; local alpha=math.max(0,1-math.sqrt(dx*dx+dy*dy)/maxd); out:set(x,y,r,g,b,a*alpha) end end
-    return out
-end
-
-local function iconSet(outDir,base,active,highlight,secondary)
-    local equip=magick.new(39,39); equip:rect(0,0,38,38,highlight); equip:rect(1,1,37,37,active)
-    -- DstOut a 14px radius circle centered at (19,19).
-    for y=0,38 do for x=0,38 do local dx=(x-19); local dy=(y-19); if dx*dx+dy*dy <= 14*14 then local r,g,b=equip:get(x,y); equip:set(x,y,r,g,b,0) end end end
-    applyAlpha(equip,oracleMasks.get("equip_frame_base"))
-    write(outDir,"equip_frame_base",equip)
-    local menuEquip=magick.new(64,64); menuEquip:over(equip,2,2); write(outDir,"menu_icon_equip",menuEquip)
-
-    local enchantBase=radialTile(highlight,43); applyAlpha(enchantBase,oracleMasks.get("enchant_frame_base")); write(outDir,"enchant_frame_base",enchantBase)
-    local spirals={
-        {"enchant_frame_spiral","menu_icon_magic_spiral","menu_icon_magic_equip_spiral"},
-        {"enchant_frame_spiral_large","menu_icon_magic_spiral_large","menu_icon_magic_equip_spiral_large"},
-    }
-    local base64=magick.new(64,64); base64:over(enchantBase,0,0); write(outDir,"menu_icon_magic",base64)
-    local equipBase=magick.new(64,64); local eb=enchantBase:resize(43,43,true):crop(39,39,2,2); local small=magick.new(39,39); small:over(eb); small:over(equip); equipBase:over(small,2,2); write(outDir,"menu_icon_magic_equip",equipBase)
-    for _,row in spirals do
-        local mask=spiralMasks.get(row[1]); local spiral=magick.paintMask(mask,secondary); write(outDir,row[1],spiral)
-        local icon=magick.new(64,64); icon:over(spiral,0,0); write(outDir,row[2],icon)
-        local e=spiral:resize(43,43,true):crop(39,39,2,2); local combo=magick.new(39,39); combo:over(e); combo:over(equip); local big=magick.new(64,64); big:over(combo,2,2); applyAlpha(big,oracleMasks.get(row[3])); write(outDir,row[3],big)
-    end
-end
-
-local function scrollbars(outDir,base,active,highlight,seed)
-    local x=(seed*37)% (512-16); local y=(seed*91)% (512-32)
-    local h=active:crop(16,32,x,y); write(outDir,"omw_menu_scroll_center_h",h); write(outDir,"omw_menu_scroll_center_v",h:rotate90(true))
-    local up=magick.new(16,16); up:polygon({{0,14},{14,14},{7,1}},highlight); up:polygon({{1,13},{13,13},{7,2}},active); applyAlpha(up,oracleMasks.get("omw_menu_scroll_up")); write(outDir,"omw_menu_scroll_up",up)
-    local left=up:rotate90(false); applyAlpha(left,oracleMasks.get("omw_menu_scroll_left")); write(outDir,"omw_menu_scroll_left",left); local right=up:rotate90(true); applyAlpha(right,oracleMasks.get("omw_menu_scroll_right")); write(outDir,"omw_menu_scroll_right",right)
-    local down=magick.new(16,16); down:polygon({{0,1},{14,1},{7,14}},highlight); down:polygon({{1,2},{13,2},{7,13}},active); applyAlpha(down,oracleMasks.get("omw_menu_scroll_down")); write(outDir,"omw_menu_scroll_down",down)
-end
-
-local function cursor(outDir,base,active)
-    -- The oracle supplies IM's exact antialiased rotate/emboss silhouette; theme color stays live.
-    local mask=oracleMasks.get("tx_cursor")
-    local out=magick.paintMask(mask,active)
-    write(outDir,"tx_cursor",out)
-end
-
-function M.generate(options)
-    options=options or {}
-    local outDir=options.output or "Textures"
-    ensureDir(outDir)
-    local primary=magick.color(options.primary or "#b20047")
-    local secondary=magick.color(options.secondary or "#00ff99")
-    local tertiary=magick.color(options.tertiary or "#ff4d94")
-    local font=canonicalFont(options.font or "MysticCards")
-    local primarySize=options.primarySize or 32
-    local secondarySize=options.secondarySize or 16
-    if primarySize ~= 14 and primarySize ~= 32 then error("morrowind-ui: compiled oracle masks currently support primarySize 14 or 32",2) end
-    if secondarySize ~= 16 then error("morrowind-ui: compiled oracle masks currently support secondarySize 16",2) end
-    local seed=math.floor(options.seed or 0x4A455353)
-
-    local base=magick.noise(512,512,primary,seed+1,0.25)
-    local highlight=magick.noise(512,512,secondary,seed+2,0.25)
-    local active=magick.noise(512,512,tertiary,seed+3,0.25)
-    write(outDir,"noise_base",base); write(outDir,"noise_highlight",highlight); write(outDir,"noise_active",active)
-
-    local esc={"Credits","Exit","Load","New","Options","Save","Return","Papa_Bless"}
-    for _,label in esc do
-        for _,state in {{"",0,base},{"_pressed",20,active},{"_over",20,base}} do
-            local img=textImage(font,"p",primarySize,label,state[2],state[3],secondary,1,5,40)
-            local name="menu_"..label..state[1]
-            if label=="Save" then name="menu_savegame"..state[1] elseif label=="New" then name="menu_newgame"..state[1] elseif label=="Load" then name="menu_loadgame"..state[1] elseif label=="Exit" then name="menu_exitgame"..state[1] end
-            write(outDir,name,img)
-        end
-    end
-
-    local journal={"Cancel","Close","Journal","Next","Options","Prev","Quests","All","Active","Topics","Take"}
-    for _,label in journal do
-        for _,state in {{"_idle",active},{"_pressed",base},{"_over",highlight}} do
-            local img=textImage(font,"j",secondarySize,label,0,state[2],secondary,0,0,0)
-            local outLabel=label
-            if label=="All" then outLabel="quests_all" elseif label=="Active" then outLabel="quests_active" end
-            write(outDir,"tx_menubook_"..outLabel..state[1],img)
-        end
-    end
-
-    scrollbars(outDir,base,active,highlight,seed)
-    iconSet(outDir,base,active,highlight,secondary)
-
-    frameTextures(outDir,512,512,1,active,highlight,"menu_thin_border")
-    frameTextures(outDir,512,512,2,active,highlight,"menu_thick_border")
-    frameTextures(outDir,256,16,1,highlight,active,"menu_head_block")
-    -- Match the original's odd rename of center -> middle.
-    jess.fs.copy(jess.fs.join(outDir,"menu_head_block_center.dds"),jess.fs.join(outDir,"menu_head_block_middle.dds"))
-    jess.fs.remove(jess.fs.join(outDir,"menu_head_block_center.dds"))
-    frameTextures(outDir,128,16,4,active,highlight,"menu_button_frame")
-    frameTextures(outDir,12,12,2,highlight,active,"menu_rightbuttondown","")
-    frameTextures(outDir,12,12,2,active,highlight,"menu_rightbuttonup","")
-
-    frameTextures(outDir,120,120,4,active,highlight,"extra_frame_128_thick")
-    frameTextures(outDir,124,124,2,active,highlight,"extra_frame_128_thin")
-    frameTextures(outDir,64,64,4,active,highlight,"extra_frame_72_thick")
-    frameTextures(outDir,68,68,2,active,highlight,"extra_frame_72_thin")
-    frameTextures(outDir,24,24,4,active,highlight,"extra_frame_36_thick")
-    frameTextures(outDir,32,32,2,active,highlight,"extra_frame_36_thin")
-    frameTextures(outDir,28,28,2,active,highlight,"extra_frame_32_thin")
-    frameTextures(outDir,24,24,4,active,highlight,"extra_frame_32_thick")
-    frameTextures(outDir,16,16,1,active,highlight,"extra_frame_18_thin")
-    frameTextures(outDir,14,14,2,active,highlight,"extra_frame_18_thick")
-    cursor(outDir,base,active)
-
-    return { output=outDir, files=#jess.fs.list(outDir), seed=seed, font=font, primarySize=primarySize, secondarySize=secondarySize }
-end
-
-M.themes = {
-    {name="ArcaneEnergy", primary="AA00FF", tertiary="5500AA", secondary="E040FB"},
-    {name="MysticOcean", primary="0074d9", secondary="001f3f", tertiary="7fdbff"},
-    {name="momw", primary="222", secondary="444", tertiary="333"},
-    {name="Prim", primary="f1ecf6", secondary="7a49a5", tertiary="d7c8e4"},
-    {name="PickleRick", primary="a3ffb4", tertiary="4974a5", secondary="304c36"},
-    {name="White-Rose", primary="843c54", tertiary="5c2a3a", secondary="271219"},
-    {name="Beige", primary="ffa500", tertiary="4974a5", secondary="fff6e5"},
-    {name="America", primary="fff", tertiary="f00", secondary="00f"},
-    {name="Rose"},
-    {name="Royale", primary="000", tertiary="180e21", secondary="492b63"},
-    {name="Blood-Raven", primary="ff0000", tertiary="190000", secondary="000000"},
-    {name="Mono", primary="000", secondary="333", tertiary="fff"},
-    {name="VeryDark", primary="fff", secondary="333", tertiary="111"},
-    {name="Cobalt", primary="000000", secondary="0066ff", tertiary="002866", primarySize=14},
-    {name="IndustrialSteel", tertiary="3d3d3d", secondary="7f8c8d", primary="bdc3c7"},
+--- The folder the textures are written into (`Textures` where the process stands, when not
+--- given), the theme's three colors, one of the bundled fonts by any of its names, the sizes of
+--- the menu's text (14 or 32) and of the journal's (16), and the seed of the noise.
+export type Options = {
+  output: string?,
+  primary: Color?,
+  secondary: Color?,
+  tertiary: Color?,
+  font: string?,
+  primarySize: number?,
+  secondarySize: number?,
+  seed: number?,
 }
 
-function M.generateAll(root, options)
-    root=root or "."; options=options or {}; ensureDir(root)
-    local results={}
-    for i,theme in M.themes do
-        local out=jess.fs.join(root,theme.name,"Textures"); ensureDir(jess.fs.join(root,theme.name))
-        if jess.fs.exists(out) then
-            for _,name in jess.fs.list(out) do jess.fs.remove(jess.fs.join(out,name)) end
-        else ensureDir(out) end
-        local cfg={output=out,primary=theme.primary,secondary=theme.secondary,tertiary=theme.tertiary,primarySize=theme.primarySize,font=options.font,seed=(options.seed or 0x4A455353)+i*1000}
-        results[#results+1]=M.generate(cfg)
-    end
-    return results
+export type Result = {
+  output: string,
+  files: number,
+  seed: number,
+  font: string,
+  primarySize: number,
+  secondarySize: number,
+}
+
+--- A theme `generateAll` makes: the folder it is named for, and what of `Options` it sets.
+export type Theme = {
+  name: string,
+  primary: string?,
+  secondary: string?,
+  tertiary: string?,
+  primarySize: number?,
+}
+
+--- The font every theme is made in, and the seed the themes' own seeds are counted from.
+export type AllOptions = { font: string?, seed: number? }
+
+--- A state of a button: what its file's name ends in, how far its text is turned, and the tile
+--- its text is painted from.
+type State = { suffix: string, rotation: number, tile: Image }
+
+local MenuLabels = { 'Credits', 'Exit', 'Load', 'New', 'Options', 'Save', 'Return', 'Papa_Bless' }
+
+--- The file names of the menu buttons that are not named for their labels.
+local MenuNames: { [string]: string } = { Save = 'savegame', New = 'newgame', Load = 'loadgame', Exit = 'exitgame' }
+
+local JournalLabels = {
+  'Cancel',
+  'Close',
+  'Journal',
+  'Next',
+  'Options',
+  'Prev',
+  'Quests',
+  'All',
+  'Active',
+  'Topics',
+  'Take',
+}
+
+--- The file names of the journal buttons that are not named for their labels.
+local JournalNames: { [string]: string } = { All = 'quests_all', Active = 'quests_active' }
+
+--- Each spiral by the mask it is painted from, the icon it is laid on, and the icon it is laid
+--- on with the equip frame.
+local Spirals = {
+  { mask = 'enchant_frame_spiral', icon = 'menu_icon_magic_spiral', equipped = 'menu_icon_magic_equip_spiral' },
+  {
+    mask = 'enchant_frame_spiral_large',
+    icon = 'menu_icon_magic_spiral_large',
+    equipped = 'menu_icon_magic_equip_spiral_large',
+  },
+}
+
+local function canonicalFont(name: string?): string
+  local folded = string.lower(name or 'MysticCards')
+
+  if folded == 'mysticcards' or folded == 'mystic cards' then return 'MysticCards' end
+
+  if folded == 'dejavulgcsansmono' or folded == 'dejavulgcsansmono.ttf' or folded == 'dejavu lgc sans mono' then
+    return 'DejaVuLGCSansMono'
+  end
+
+  if folded == 'demonicletters' or folded == 'demonicletters.ttf' or folded == 'demonic letters' then
+    return 'DemonicLetters'
+  end
+
+  error('morrowind-ui: bundled font must be MysticCards, DejaVuLGCSansMono, or DemonicLetters', 2)
 end
 
-return M
+local function ensureDir(path: string)
+  if not jess.fs.exists(path) then
+    jess.fs.createDir(path)
+  elseif not jess.fs.isDir(path) then
+    error(path .. ' exists and is not a directory', 2)
+  end
+end
+
+--- A mask of whichever of two masks covers each pixel more.
+local function maxMask(first: Mask, second: Mask): Mask
+  local count = first.width * first.height
+  local out = buffer.create(count)
+
+  for index = 0, count - 1 do
+    buffer.writeu8(out, index, math.max(buffer.readu8(first.data, index), buffer.readu8(second.data, index)))
+  end
+
+  return magick.mask(first.width, first.height, out)
+end
+
+--- A mask with its coverage scaled, each byte rounded.
+local function scaleMaskAlpha(mask: Mask, amount: number): Mask
+  local count = mask.width * mask.height
+  local out = buffer.create(count)
+
+  for index = 0, count - 1 do
+    buffer.writeu8(out, index, math.floor(buffer.readu8(mask.data, index) * amount + 0.5))
+  end
+
+  return magick.mask(mask.width, mask.height, out)
+end
+
+--- Gives every pixel of an image the coverage a mask of its size has there as its alpha.
+local function applyAlpha(image: Image, mask: Mask)
+  assert(image.width == mask.width and image.height == mask.height, 'alpha mask geometry mismatch')
+
+  for row = 0, image.height - 1 do
+    for column = 0, image.width - 1 do
+      local red, green, blue = image:get(column, row)
+
+      image:set(column, row, red, green, blue, buffer.readu8(mask.data, row * image.width + column))
+    end
+  end
+end
+
+local function write(folder: string, name: string, image: Image)
+  magick.writeDDS(jess.fs.join(folder, name .. '.dds'), image)
+end
+
+--- A label of the menu (`p`) or of the journal (`j`) painted from a tile. With a stroke or a
+--- shadow the text is laid over its outline in the secondary color, and that over the outline's
+--- blurred shadow; a menu label then takes the alpha the oracle gave the whole of it.
+local function textImage(
+  font: string,
+  kind: string,
+  size: number,
+  label: string,
+  rotation: number,
+  tile: Image,
+  secondary: Color,
+  strokeWidth: number,
+  shadowRadius: number,
+  shadowOpacity: number
+): Image
+  local mask = fontMasks.get(`{font}|{kind}|{size}|{label}|{rotation}`)
+
+  if strokeWidth <= 0 and shadowOpacity <= 0 then return magick.paintMask(mask, tile) end
+
+  local stroke = magick.dilateMask(mask, math.max(1, math.floor(strokeWidth + 0.5)))
+  local paintedStroke, paintedFill = magick.paintMask(stroke, secondary), magick.paintMask(mask, tile)
+  local out = magick.new(mask.width, mask.height)
+
+  if shadowOpacity > 0 then
+    local blurred = magick.blurMask(maxMask(mask, stroke), shadowRadius)
+
+    out:over(magick.paintMask(scaleMaskAlpha(blurred, shadowOpacity / 100), secondary))
+  end
+
+  out:over(paintedStroke)
+  out:over(paintedFill)
+
+  if kind == 'p' then applyAlpha(out, fontMasks.get(`{font}|pfull|{size}|{label}|{rotation}`)) end
+
+  return out
+end
+
+--- The textures of a frame around a rectangle of a size: the frame whole, hollow and as its
+--- center, then the hollow frame's sides, their middles and its corners.
+local function frameTextures(
+  folder: string,
+  innerWidth: number,
+  innerHeight: number,
+  thickness: number,
+  dark: Source,
+  light: Source,
+  name: string,
+  cornerSuffix: string?
+)
+  local width, height = innerWidth + thickness * 2, innerHeight + thickness * 2
+  local border = thickness * 2
+  local solid = magick.new(width, height)
+
+  solid:rect(0, 0, width - 1, height - 1, dark)
+  solid:rect(thickness, thickness, innerWidth + thickness - 1, innerHeight + thickness - 1, light)
+  write(folder, name .. '_solid', solid)
+
+  local hollow = solid:clone()
+
+  for row = border, innerHeight - 1 do
+    for column = border, innerWidth - 1 do
+      local red, green, blue = hollow:get(column, row)
+
+      hollow:set(column, row, red, green, blue, 0)
+    end
+  end
+
+  write(folder, name .. '_hollow', hollow)
+  write(folder, name .. '_center', solid:crop(innerWidth - border, innerHeight - border, border, border))
+
+  local middleWidth, middleHeight = innerWidth - border, innerHeight - border
+  local leftSide, rightSide = hollow:crop(border, height, 0, 0), hollow:crop(border, height, innerWidth, 0)
+
+  write(folder, name .. '_left_side', leftSide)
+  write(folder, name .. '_right_side', rightSide)
+  write(folder, name .. '_left', leftSide:crop(border, middleHeight, 0, border))
+  write(folder, name .. '_right', rightSide:crop(border, middleHeight, 0, border))
+
+  local topSide, bottomSide = hollow:crop(width, border, 0, 0), hollow:crop(width, border, 0, innerHeight)
+
+  write(folder, name .. '_top_side', topSide)
+  write(folder, name .. '_bottom_side', bottomSide)
+  write(folder, name .. '_top', topSide:crop(middleWidth, border, border, 0))
+  write(folder, name .. '_bottom', bottomSide:crop(middleWidth, border, border, 0))
+
+  local suffix = cornerSuffix or '_corner'
+
+  write(folder, name .. '_top_left' .. suffix, topSide:crop(border, border, 0, 0))
+  write(folder, name .. '_top_right' .. suffix, topSide:crop(border, border, innerWidth, 0))
+  write(folder, name .. '_bottom_left' .. suffix, bottomSide:crop(border, border, 0, 0))
+  write(folder, name .. '_bottom_right' .. suffix, bottomSide:crop(border, border, innerWidth, 0))
+end
+
+--- A square of a tile whose alpha falls away from its center to nothing at its corners.
+local function radialTile(tile: Image, size: number): Image
+  local out = magick.new(size, size)
+  local center = (size - 1) / 2
+  local farthest = math.sqrt(center * center + center * center)
+
+  for row = 0, size - 1 do
+    for column = 0, size - 1 do
+      local red, green, blue, alpha = tile:get(column % tile.width, row % tile.height)
+      local across, down = column - center, row - center
+      local share = math.max(0, 1 - math.sqrt(across * across + down * down) / farthest)
+
+      out:set(column, row, red, green, blue, alpha * share)
+    end
+  end
+
+  return out
+end
+
+local function iconSet(folder: string, active: Image, highlight: Image, secondary: Color)
+  local equip = magick.new(39, 39)
+
+  equip:rect(0, 0, 38, 38, highlight)
+  equip:rect(1, 1, 37, 37, active)
+
+  -- DstOut a 14px radius circle centered at (19,19).
+  for row = 0, 38 do
+    for column = 0, 38 do
+      local across, down = column - 19, row - 19
+
+      if across * across + down * down <= 14 * 14 then
+        local red, green, blue = equip:get(column, row)
+
+        equip:set(column, row, red, green, blue, 0)
+      end
+    end
+  end
+
+  applyAlpha(equip, oracleMasks.get 'equip_frame_base')
+  write(folder, 'equip_frame_base', equip)
+
+  local menuEquip = magick.new(64, 64)
+
+  menuEquip:over(equip, 2, 2)
+  write(folder, 'menu_icon_equip', menuEquip)
+
+  local enchantBase = radialTile(highlight, 43)
+
+  applyAlpha(enchantBase, oracleMasks.get 'enchant_frame_base')
+  write(folder, 'enchant_frame_base', enchantBase)
+
+  local magicIcon = magick.new(64, 64)
+
+  magicIcon:over(enchantBase, 0, 0)
+  write(folder, 'menu_icon_magic', magicIcon)
+
+  local magicEquip, framed = magick.new(64, 64), magick.new(39, 39)
+
+  framed:over(enchantBase:resize(43, 43, true):crop(39, 39, 2, 2))
+  framed:over(equip)
+  magicEquip:over(framed, 2, 2)
+  write(folder, 'menu_icon_magic_equip', magicEquip)
+
+  for _, names in Spirals do
+    local spiral = magick.paintMask(spiralMasks.get(names.mask), secondary)
+    local icon, equipped, combined = magick.new(64, 64), magick.new(64, 64), magick.new(39, 39)
+
+    write(folder, names.mask, spiral)
+    icon:over(spiral, 0, 0)
+    write(folder, names.icon, icon)
+    combined:over(spiral:resize(43, 43, true):crop(39, 39, 2, 2))
+    combined:over(equip)
+    equipped:over(combined, 2, 2)
+    applyAlpha(equipped, oracleMasks.get(names.equipped))
+    write(folder, names.equipped, equipped)
+  end
+end
+
+local function scrollbars(folder: string, active: Image, highlight: Image, seed: number)
+  local center = active:crop(16, 32, (seed * 37) % (512 - 16), (seed * 91) % (512 - 32))
+
+  write(folder, 'omw_menu_scroll_center_h', center)
+  write(folder, 'omw_menu_scroll_center_v', center:rotate90(true))
+
+  local up = magick.new(16, 16)
+
+  up:polygon({ { 0, 14 }, { 14, 14 }, { 7, 1 } }, highlight)
+  up:polygon({ { 1, 13 }, { 13, 13 }, { 7, 2 } }, active)
+  applyAlpha(up, oracleMasks.get 'omw_menu_scroll_up')
+  write(folder, 'omw_menu_scroll_up', up)
+
+  local left = up:rotate90(false)
+
+  applyAlpha(left, oracleMasks.get 'omw_menu_scroll_left')
+  write(folder, 'omw_menu_scroll_left', left)
+
+  local right = up:rotate90(true)
+
+  applyAlpha(right, oracleMasks.get 'omw_menu_scroll_right')
+  write(folder, 'omw_menu_scroll_right', right)
+
+  local down = magick.new(16, 16)
+
+  down:polygon({ { 0, 1 }, { 14, 1 }, { 7, 14 } }, highlight)
+  down:polygon({ { 1, 2 }, { 13, 2 }, { 7, 13 } }, active)
+  applyAlpha(down, oracleMasks.get 'omw_menu_scroll_down')
+  write(folder, 'omw_menu_scroll_down', down)
+end
+
+function Menu.generate(options: Options?): Result
+  local settings: Options = options or {}
+  local folder = settings.output or 'Textures'
+
+  ensureDir(folder)
+
+  local primary = magick.color(settings.primary or '#b20047')
+  local secondary = magick.color(settings.secondary or '#00ff99')
+  local tertiary = magick.color(settings.tertiary or '#ff4d94')
+  local font = canonicalFont(settings.font or 'MysticCards')
+  local primarySize, secondarySize = settings.primarySize or 32, settings.secondarySize or 16
+
+  if primarySize ~= 14 and primarySize ~= 32 then
+    error('morrowind-ui: compiled oracle masks currently support primarySize 14 or 32', 2)
+  end
+
+  if secondarySize ~= 16 then
+    error('morrowind-ui: compiled oracle masks currently support secondarySize 16', 2)
+  end
+
+  local seed = math.floor(settings.seed or 0x4A455353)
+  local base = magick.noise(512, 512, primary, seed + 1, 0.25)
+  local highlight = magick.noise(512, 512, secondary, seed + 2, 0.25)
+  local active = magick.noise(512, 512, tertiary, seed + 3, 0.25)
+
+  write(folder, 'noise_base', base)
+  write(folder, 'noise_highlight', highlight)
+  write(folder, 'noise_active', active)
+
+  local menuStates: { State } = {
+    { suffix = '', rotation = 0, tile = base },
+    { suffix = '_pressed', rotation = 20, tile = active },
+    { suffix = '_over', rotation = 20, tile = base },
+  }
+
+  local journalStates: { State } = {
+    { suffix = '_idle', rotation = 0, tile = active },
+    { suffix = '_pressed', rotation = 0, tile = base },
+    { suffix = '_over', rotation = 0, tile = highlight },
+  }
+
+  for _, label in MenuLabels do
+    for _, state in menuStates do
+      local image = textImage(font, 'p', primarySize, label, state.rotation, state.tile, secondary, 1, 5, 40)
+
+      write(folder, 'menu_' .. (MenuNames[label] or label) .. state.suffix, image)
+    end
+  end
+
+  for _, label in JournalLabels do
+    for _, state in journalStates do
+      local image = textImage(font, 'j', secondarySize, label, state.rotation, state.tile, secondary, 0, 0, 0)
+
+      write(folder, 'tx_menubook_' .. (JournalNames[label] or label) .. state.suffix, image)
+    end
+  end
+
+  scrollbars(folder, active, highlight, seed)
+  iconSet(folder, active, highlight, secondary)
+
+  frameTextures(folder, 512, 512, 1, active, highlight, 'menu_thin_border')
+  frameTextures(folder, 512, 512, 2, active, highlight, 'menu_thick_border')
+  frameTextures(folder, 256, 16, 1, highlight, active, 'menu_head_block')
+  -- Match the original's odd rename of center -> middle.
+  jess.fs.copy(jess.fs.join(folder, 'menu_head_block_center.dds'), jess.fs.join(folder, 'menu_head_block_middle.dds'))
+  jess.fs.remove(jess.fs.join(folder, 'menu_head_block_center.dds'))
+  frameTextures(folder, 128, 16, 4, active, highlight, 'menu_button_frame')
+  frameTextures(folder, 12, 12, 2, highlight, active, 'menu_rightbuttondown', '')
+  frameTextures(folder, 12, 12, 2, active, highlight, 'menu_rightbuttonup', '')
+
+  frameTextures(folder, 120, 120, 4, active, highlight, 'extra_frame_128_thick')
+  frameTextures(folder, 124, 124, 2, active, highlight, 'extra_frame_128_thin')
+  frameTextures(folder, 64, 64, 4, active, highlight, 'extra_frame_72_thick')
+  frameTextures(folder, 68, 68, 2, active, highlight, 'extra_frame_72_thin')
+  frameTextures(folder, 24, 24, 4, active, highlight, 'extra_frame_36_thick')
+  frameTextures(folder, 32, 32, 2, active, highlight, 'extra_frame_36_thin')
+  frameTextures(folder, 28, 28, 2, active, highlight, 'extra_frame_32_thin')
+  frameTextures(folder, 24, 24, 4, active, highlight, 'extra_frame_32_thick')
+  frameTextures(folder, 16, 16, 1, active, highlight, 'extra_frame_18_thin')
+  frameTextures(folder, 14, 14, 2, active, highlight, 'extra_frame_18_thick')
+
+  -- The oracle supplies IM's exact antialiased rotate/emboss silhouette; theme color stays live.
+  write(folder, 'tx_cursor', magick.paintMask(oracleMasks.get 'tx_cursor', active))
+
+  return {
+    output = folder,
+    files = #jess.fs.list(folder),
+    seed = seed,
+    font = font,
+    primarySize = primarySize,
+    secondarySize = secondarySize,
+  }
+end
+
+Menu.themes = {
+  { name = 'ArcaneEnergy', primary = 'AA00FF', tertiary = '5500AA', secondary = 'E040FB' },
+  { name = 'MysticOcean', primary = '0074d9', secondary = '001f3f', tertiary = '7fdbff' },
+  { name = 'momw', primary = '222', secondary = '444', tertiary = '333' },
+  { name = 'Prim', primary = 'f1ecf6', secondary = '7a49a5', tertiary = 'd7c8e4' },
+  { name = 'PickleRick', primary = 'a3ffb4', tertiary = '4974a5', secondary = '304c36' },
+  { name = 'White-Rose', primary = '843c54', tertiary = '5c2a3a', secondary = '271219' },
+  { name = 'Beige', primary = 'ffa500', tertiary = '4974a5', secondary = 'fff6e5' },
+  { name = 'America', primary = 'fff', tertiary = 'f00', secondary = '00f' },
+  { name = 'Rose' },
+  { name = 'Royale', primary = '000', tertiary = '180e21', secondary = '492b63' },
+  { name = 'Blood-Raven', primary = 'ff0000', tertiary = '190000', secondary = '000000' },
+  { name = 'Mono', primary = '000', secondary = '333', tertiary = 'fff' },
+  { name = 'VeryDark', primary = 'fff', secondary = '333', tertiary = '111' },
+  { name = 'Cobalt', primary = '000000', secondary = '0066ff', tertiary = '002866', primarySize = 14 },
+  { name = 'IndustrialSteel', tertiary = '3d3d3d', secondary = '7f8c8d', primary = 'bdc3c7' },
+} :: { Theme }
+
+function Menu.generateAll(root: string?, options: AllOptions?): { Result }
+  local parent = root or '.'
+  local settings: AllOptions = options or {}
+  local results: { Result } = {}
+
+  ensureDir(parent)
+
+  for index, theme in Menu.themes do
+    local folder = jess.fs.join(parent, theme.name, 'Textures')
+
+    ensureDir(jess.fs.join(parent, theme.name))
+
+    if jess.fs.exists(folder) then
+      for _, name in jess.fs.list(folder) do
+        jess.fs.remove(jess.fs.join(folder, name))
+      end
+    else
+      ensureDir(folder)
+    end
+
+    table.insert(
+      results,
+      Menu.generate {
+        output = folder,
+        primary = theme.primary,
+        secondary = theme.secondary,
+        tertiary = theme.tertiary,
+        primarySize = theme.primarySize,
+        font = settings.font,
+        seed = (settings.seed or 0x4A455353) + index * 1000,
+      }
+    )
+  end
+
+  return results
+end
+
+return Menu
