@@ -3,6 +3,7 @@
 --!optimize 2
 -- H3 artwork: the header and the logo, the H3UI chrome sources made from a photographed
 -- material, and the chrome atlases recomposed from those sources or from a Morrowind theme.
+local dataPlane = require '@dream/data'
 local magick = require '@magick'
 local masks = require '@st4sh/scripts.h3-masks'
 
@@ -433,11 +434,11 @@ local function twoTone(
     shadeUniform(piece, width, height, margin, 100)
   end
 
-  for row = margin, height - margin - 1 do
-    for column = margin, width - margin - 1 do
-      local red, green, blue = piece:get(column, row)
+  local span = width - margin * 2
 
-      piece:set(column, row, red, green, blue, 0)
+  if span > 0 then
+    for row = margin, height - margin - 1 do
+      dataPlane.fill(piece.data, 'u8@4+3', (row * width + margin) * 4, span, 0)
     end
   end
 

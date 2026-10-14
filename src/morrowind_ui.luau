@@ -2,6 +2,7 @@
 --!native
 --!optimize 2
 -- Port of generate_menu.sh to Jess/Luau. No subprocesses; all raster work is @magick.
+local dataPlane = require '@dream/data'
 local fontMasks = require '@st4sh/scripts.morrowind-font-masks'
 local magick = require '@magick'
 local oracleMasks = require '@st4sh/scripts.morrowind-oracle-masks'
@@ -134,17 +135,25 @@ local function scaleMaskAlpha(mask: Mask, amount: number): Mask
   return magick.mask(mask.width, mask.height, out)
 end
 
+--- 0, 1, 2 ... as u32s: the index vector that scatters a mask's bytes one to a pixel. Grown to the
+--- largest image asked of it, and never shrunk.
+local identity = buffer.create(0)
+
+local function positions(count: number): buffer
+  if buffer.len(identity) >= count * 4 then return identity end
+
+  identity = buffer.create(count * 4)
+  into(identity, 'u32')[for index in range(0, count - 1) => index]
+
+  return identity
+end
+
 --- Gives every pixel of an image the coverage a mask of its size has there as its alpha.
 local function applyAlpha(image: Image, mask: Mask)
   assert(image.width == mask.width and image.height == mask.height, 'alpha mask geometry mismatch')
 
-  for row = 0, image.height - 1 do
-    for column = 0, image.width - 1 do
-      local red, green, blue = image:get(column, row)
-
-      image:set(column, row, red, green, blue, buffer.readu8(mask.data, row * image.width + column))
-    end
-  end
+  local count = image.width * image.height
+  dataPlane.scatter(mask.data, 'u8@4+3', 0, count, positions(count), image.data, 0, count)
 end
 
 local function write(folder: string, name: string, image: Image)
@@ -210,11 +219,11 @@ local function frameTextures(
 
   local hollow = solid:clone()
 
-  for row = border, innerHeight - 1 do
-    for column = border, innerWidth - 1 do
-      local red, green, blue = hollow:get(column, row)
+  local first, last = math.max(border, 0), math.min(innerWidth, width) - 1
 
-      hollow:set(column, row, red, green, blue, 0)
+  if last >= first then
+    for row = math.max(border, 0), math.min(innerHeight, height) - 1 do
+      dataPlane.fill(hollow.data, 'u8@4+3', (row * width + first) * 4, last - first + 1, 0)
     end
   end
 
