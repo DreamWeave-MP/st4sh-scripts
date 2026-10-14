@@ -5,7 +5,7 @@ build of Jess at `b12612f` on l3i 2.0.2.
 
 ```sh
 jess run --capability filesystem.read --capability filesystem.write \
-  --package <package> --package-path jpk <package>/bench/bench.luau <folder on a tmpfs>
+  --package <package> --package-path jpk <package>/bench/bench.jsl <folder on a tmpfs>
 ```
 
 Base is `92cdf73` (the bench's own commit, before any change it measures); head is `cd0d21c`. The

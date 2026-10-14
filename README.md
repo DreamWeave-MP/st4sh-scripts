@@ -15,7 +15,7 @@ It depends on `org.dreamweave.magick` for generic raster/codec operations. `magi
 - `@st4sh/scripts.cod3x` — COD3X hero/scope/mark generation using the supplied Oxanium coverage oracle.
 - `@st4sh/scripts.material-variants` — `build_material_variants.sh` port; catalog/source assets stay caller-owned.
 
-The old `h3-tools.jpk`, `morrowind-ui.jpk`, and loose release `scripts/*.luau` adapters are intentionally gone. Their implementation is consolidated here.
+The old `h3-tools.jpk`, `morrowind-ui.jpk`, and loose release `scripts/*.jsl` adapters are intentionally gone. Their implementation is consolidated here.
 
 ## Codec note
 

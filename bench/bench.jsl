@@ -4,7 +4,7 @@
 -- Morrowind menu generator, COD3X, the H3 header, icon and chrome, the progressive atlas, the
 -- material variants and the command line's dispatch. Run by
 -- `jess run --package . --package-path .. --capability filesystem.read --capability
--- filesystem.write bench/bench.luau <folder> [filter] [record]`, on a release build. Prints one
+-- filesystem.write bench/bench.jsl <folder> [filter] [record]`, on a release build. Prints one
 -- line per workload: its name, a tab, and the seconds one call takes.
 --
 -- Every generator writes files, and `jess.fs.write` syncs each one to the disk before it

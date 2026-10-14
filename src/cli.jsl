@@ -1,6 +1,6 @@
 --!strict
 --!native
--- Parser/dispatcher equivalents of the old loose *.luau adapters.
+-- Parser/dispatcher equivalents of the old loose *.jsl adapters.
 -- Call require('@st4sh/scripts.cli').run(command, args).
 local atlas = require '@st4sh/scripts.atlas'
 local cod3x = require '@st4sh/scripts.cod3x'
