@@ -2,6 +2,7 @@
 --!native
 --!optimize 2
 -- Port of make_atlas.sh as a reusable package API.
+local dataPlane = require '@dream/data'
 local magick = require '@magick'
 
 local Atlas = {}
@@ -28,13 +29,16 @@ export type Result = { output: string, width: number, height: number, rows: numb
 --- keeping its alpha.
 local function blackened(source: Image, width: number, height: number): Image
   local tile = source:clone()
+  local columns, rows = math.min(width, tile.width), math.min(height, tile.height)
 
-  for row = 0, height - 1 do
-    for column = 0, width - 1 do
-      local _, _, _, alpha = tile:get(column, row)
+  if columns <= 0 then return tile end
 
-      tile:set(column, row, 0, 0, 0, alpha)
-    end
+  for row = 0, rows - 1 do
+    local at = row * tile.width * 4
+
+    dataPlane.fill(tile.data, 'u8@4', at, columns, 0)
+    dataPlane.fill(tile.data, 'u8@4+1', at, columns, 0)
+    dataPlane.fill(tile.data, 'u8@4+2', at, columns, 0)
   end
 
   return tile
