@@ -10,6 +10,8 @@ local magick = require '@magick'
 local scripts = require '@st4sh/scripts'
 local support = require './support'
 local test = require '@jess/test'
+local ui = require '@st4sh/scripts.morrowind-ui'
+local variants = require '@st4sh/scripts.material-variants'
 
 local expect = test.expect
 local suite = test.new()
@@ -34,11 +36,11 @@ suite.describe('the toolbox', function()
   suite.it('gathers the modules under one frozen table', function()
     expect(table.isfrozen(scripts)).toBe(true)
     expect(scripts.atlas).toBe(require '@st4sh/scripts.atlas')
-    expect(scripts.morrowind).toBe(require '@st4sh/scripts.morrowind-ui')
+    expect(scripts.morrowind).toBe(ui)
     expect(scripts.morrowindFucked).toBe(require '@st4sh/scripts.morrowind-fucked')
     expect(scripts.h3).toBe(require '@st4sh/scripts.h3')
     expect(scripts.cod3x).toBe(require '@st4sh/scripts.cod3x')
-    expect(scripts.materialVariants).toBe(require '@st4sh/scripts.material-variants')
+    expect(scripts.materialVariants).toBe(variants)
     expect(scripts.cli).toBe(cli)
   end)
 
@@ -272,7 +274,7 @@ suite.describe('morrowind', function()
 
   suite.it('makes every theme under a root, from a seed', function()
     local root = scratch('cli', 'all')
-    local results = cli.run('morrowind-all', { root, '5' }) :: { { [string]: unknown } }
+    local results = cli.run('morrowind-all', { root, '5' }) :: { ui.Result }
 
     expect(#results).toBe(15)
     expect(results[1]).toEqual {
@@ -375,7 +377,7 @@ suite.describe('cod3x and material variants', function()
       '--install-dir',
       install,
       '--random-crop',
-    }) :: { count: number, built: { { cropX: number, cropY: number } } }
+    }) :: variants.Result
 
     expect(random.count).toBe(1)
     pin('variants random crop', `{random.built[1].cropX},{random.built[1].cropY}`)
