@@ -1,6 +1,7 @@
 --!strict
 --!optimize 2
 -- Destructive port of generate_fucked.sh, isolated from the normal Morrowind generator.
+local fs = require '@dream/fs'
 local Shuffle = {}
 
 --- The seed the files are chosen from, and the Textures folder shuffled: the one the process
@@ -24,12 +25,15 @@ end
 
 --- Adds every file under a folder, however deep, to `found`.
 local function collect(folder: string, found: { string })
-  for _, name in jess.fs.list(folder) do
-    local path = jess.fs.join(folder, name)
+  local names, problem = fs.list(folder)
+  if not names then error(problem, 0) end
 
-    if jess.fs.isDir(path) then
+  for _, name in names do
+    local path = fs.join(folder, name)
+
+    if fs.isDir(path) then
       collect(path, found)
-    elseif jess.fs.isFile(path) then
+    elseif fs.isFile(path) then
       table.insert(found, path)
     end
   end
@@ -40,28 +44,40 @@ end
 function Shuffle.shuffle(options: Options?): Result
   local settings: Options = options or {}
   local random = generator(settings.seed)
-  local directory = settings.cwd or jess.fs.cwd()
-  local parent = jess.fs.parent(directory)
-  local mods = parent and jess.fs.parent(parent)
+  local directory = settings.cwd
+  if not directory then
+    local current, problem = fs.cwd()
+    if not current then error(problem, 0) end
+
+    directory = current
+  end
+  local parent = fs.parent(directory)
+  local mods = parent and fs.parent(parent)
 
   if not mods then error('cannot resolve ../../ from current directory', 2) end
 
   local others: { string } = {}
 
-  for _, name in jess.fs.list(mods) do
-    local textures = jess.fs.join(mods, name, 'Textures')
+  local names, problem = fs.list(mods)
+  if not names then error(problem, 0) end
 
-    if jess.fs.isDir(textures) and textures ~= directory then table.insert(others, textures) end
+  for _, name in names do
+    local textures = fs.join(mods, name, 'Textures')
+
+    if fs.isDir(textures) and textures ~= directory then table.insert(others, textures) end
   end
 
   if #others == 0 then error('no other directories with Textures subdirectory found', 2) end
 
   local replaced = 0
 
-  for _, name in jess.fs.list(directory) do
-    local target = jess.fs.join(directory, name)
+  local names, problem = fs.list(directory)
+  if not names then error(problem, 0) end
 
-    if not jess.fs.isFile(target) then continue end
+  for _, name in names do
+    local target = fs.join(directory, name)
+
+    if not fs.isFile(target) then continue end
 
     local files: { string } = {}
 
@@ -71,8 +87,9 @@ function Shuffle.shuffle(options: Options?): Result
 
     local taken = files[random(#files)]
 
-    jess.fs.copy(taken, target)
-    jess.fs.remove(taken)
+    local done, problem = fs.copy(taken, target)
+    if not done then error(problem, 0) end
+    fs.remove(taken)
     replaced += 1
   end
 

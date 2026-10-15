@@ -5,6 +5,7 @@
 -- answers, and every refusal to its words. Pictures a generator reads are made here from a seed.
 local atlas = require '@st4sh/scripts.atlas'
 local cod3x = require '@st4sh/scripts.cod3x'
+local fs = require '@dream/fs'
 local goldens = require './goldens'
 local h3 = require '@st4sh/scripts.h3'
 local magick = require '@magick'
@@ -16,7 +17,7 @@ local variants = require '@st4sh/scripts.material-variants'
 local expect = test.expect
 local suite = test.new()
 local pin, settle = support.goldens(goldens.artwork)
-local scratch, join = support.scratch, jess.fs.join
+local scratch, join = support.scratch, fs.join
 
 --- Each way the atlas makes its tiles, by the options that choose it.
 local AtlasModes = {
@@ -46,7 +47,8 @@ end
 local function plant(folder: string, name: string, text: string): string
   local path = join(folder, name)
 
-  jess.fs.write(path, text)
+  local done, problem = fs.writeFile(path, text, { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 
   return path
 end
@@ -344,7 +346,8 @@ suite.describe('h3 chrome', function()
     end).toThrow 'missing H3UI '
 
     for _, name in support.files(chrome()) do
-      jess.fs.copy(join(chrome(), name), join(wrong, name))
+      local done, problem = fs.copy(join(chrome(), name), join(wrong, name))
+      if not done then error(problem, 0) end
     end
 
     magick.write(join(wrong, 'frame_caption.dds'), magick.new(260, 21))
@@ -478,7 +481,7 @@ suite.describe('material variants', function()
       },
     }
 
-    expect(jess.fs.read(siteData)).toBe(
+    expect(fs.readFileString(siteData)).toBe(
       '{\n  "materials": [\n'
         .. '    {"id": "slate", "family": "Stone", "name": "Slate \\"Grey\\"", "photo": "slate.png", "crop": [3, 0],'
         .. ' "url": "https://example.test/slate", "author": "A. Mason", "license": "CC0"},\n'
@@ -563,7 +566,7 @@ suite.describe('material variants', function()
       variants.build { materials = materials, sourceDir = folder }
     end).toThrow 'material variants: installDir required'
 
-    expect(jess.fs.exists(install)).toBe(false)
+    expect(fs.exists(install)).toBe(false)
   end)
 end)
 

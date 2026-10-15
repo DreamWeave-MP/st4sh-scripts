@@ -1,6 +1,7 @@
 --!strict
 --!optimize 2
 -- Port of build_material_variants.sh. The catalog/source assets are caller-owned.
+local fs = require '@dream/fs'
 local h3 = require '@st4sh/scripts.h3'
 local magick = require '@magick'
 
@@ -41,17 +42,18 @@ type Material = {
 }
 
 local function ensureTree(path: string)
-  if jess.fs.exists(path) then
-    if not jess.fs.isDir(path) then error(path .. ' exists and is not a directory', 2) end
+  if fs.exists(path) then
+    if not fs.isDir(path) then error(path .. ' exists and is not a directory', 2) end
 
     return
   end
 
-  local parent = jess.fs.parent(path)
+  local parent = fs.parent(path)
 
-  if parent and parent ~= path and parent ~= '' and not jess.fs.exists(parent) then ensureTree(parent) end
+  if parent and parent ~= path and parent ~= '' and not fs.exists(parent) then ensureTree(parent) end
 
-  jess.fs.createDir(path)
+  local done, problem = fs.mkdir(path, { recursive = true })
+  if not done then error(problem, 0) end
 end
 
 local function splitTabs(line: string): { string }
@@ -106,7 +108,7 @@ local function catalog(materials: string, filter: boolean, wanted: { [string]: b
   local rows: { Material } = {}
   local lineNumber = 0
   -- A catalog that is not there is refused by `string.gmatch`, in its words.
-  local text = jess.fs.read(materials) :: string
+  local text = fs.readFileString(materials) :: string
 
   for line in string.gmatch(text, '([^\r\n]+)') do
     lineNumber += 1
@@ -153,18 +155,18 @@ function Variants.build(options: Options?): Result
 
   if #rows == 0 then error('No materials matched.', 2) end
 
-  ensureTree(jess.fs.join(installDir, 'chrome'))
+  ensureTree(fs.join(installDir, 'chrome'))
 
   if staticDir then ensureTree(staticDir) end
 
   local random = generator(settings.seed or 3301)
   local built: { Built } = {}
-  local work = settings.workDir or jess.fs.join(installDir, '.st4sh-material-work')
+  local work = settings.workDir or fs.join(installDir, '.st4sh-material-work')
 
   ensureTree(work)
 
   for _, row in rows do
-    local material = jess.fs.join(sourceDir, row.photo)
+    local material = fs.join(sourceDir, row.photo)
     local cropX, cropY = row.cropX or 0, row.cropY or 0
 
     if materialCrop then
@@ -177,7 +179,7 @@ function Variants.build(options: Options?): Result
       cropY = random(photo.height - cropSize + 1)
     end
 
-    local sources, atlases = jess.fs.join(work, 'gen-' .. row.stem), jess.fs.join(work, 'atlas-' .. row.stem)
+    local sources, atlases = fs.join(work, 'gen-' .. row.stem), fs.join(work, 'atlas-' .. row.stem)
 
     h3.generateChromeSources {
       material = material,
@@ -187,14 +189,15 @@ function Variants.build(options: Options?): Result
       seed = settings.seed or 3301,
     }
 
-    local recomposed = h3.recomposeChrome { h3ui = jess.fs.join(sources, 'Textures', 'h3ui'), output = atlases }
+    local recomposed = h3.recomposeChrome { h3ui = fs.join(sources, 'Textures', 'h3ui'), output = atlases }
     local atlas = recomposed.h3ui :: string
-    local installed = jess.fs.join(installDir, 'chrome', row.stem .. '.dds')
+    local installed = fs.join(installDir, 'chrome', row.stem .. '.dds')
 
-    jess.fs.copy(atlas, installed)
+    local done, problem = fs.copy(atlas, installed)
+    if not done then error(problem, 0) end
 
     -- Generic @magick has no WebP encoder yet; emit lossless PNG previews.
-    if staticDir then magick.write(jess.fs.join(staticDir, row.stem .. '.png'), magick.read(atlas)) end
+    if staticDir then magick.write(fs.join(staticDir, row.stem .. '.png'), magick.read(atlas)) end
 
     table.insert(built, { stem = row.stem, cropX = cropX, cropY = cropY, output = installed })
   end
@@ -224,11 +227,12 @@ function Variants.build(options: Options?): Result
 
     table.insert(chunks, '\n  ]\n}\n')
 
-    local parent = jess.fs.parent(siteData)
+    local parent = fs.parent(siteData)
 
     if parent then ensureTree(parent) end
 
-    jess.fs.write(siteData, table.concat(chunks))
+    local done, problem = fs.writeFile(siteData, table.concat(chunks), { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
   end
 
   return { built = built, count = #built }

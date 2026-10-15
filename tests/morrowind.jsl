@@ -3,6 +3,7 @@
 -- The Morrowind menu generator and the shuffle beside it, pinned: every file a theme is, by the
 -- kind of texture, for each bundled font; what a call answers; what it refuses; and what the
 -- shuffle moves, wherever the filesystem's own order of names cannot change the answer.
+local fs = require '@dream/fs'
 local goldens = require './goldens'
 local shuffle = require '@st4sh/scripts.morrowind-fucked'
 local support = require './support'
@@ -54,16 +55,18 @@ local Themes = {
 --- Removes every file under a folder, so a theme's 13 MB do not outlive the case that read them.
 local function discard(folder: string)
   for _, path in support.files(folder) do
-    jess.fs.remove(jess.fs.join(folder, path))
+    fs.remove(fs.join(folder, path))
   end
 end
 
 --- A file of a few bytes, its folder made first.
 local function plant(folder: string, name: string, text: string): string
-  local path = jess.fs.join(folder, name)
+  local path = fs.join(folder, name)
 
-  jess.fs.createDir(folder)
-  jess.fs.write(path, text)
+  local done, problem = fs.mkdir(folder, { recursive = true })
+  if not done then error(problem, 0) end
+  local done, problem = fs.writeFile(path, text, { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 
   return path
 end
@@ -90,8 +93,8 @@ suite.describe('generate', function()
       pin(`default {kind.name}`, support.folder(out, kind.pattern))
     end
 
-    expect(jess.fs.exists(jess.fs.join(out, 'menu_head_block_center.dds'))).toBe(false)
-    expect(jess.fs.exists(jess.fs.join(out, 'menu_head_block_middle.dds'))).toBe(true)
+    expect(fs.exists(fs.join(out, 'menu_head_block_center.dds'))).toBe(false)
+    expect(fs.exists(fs.join(out, 'menu_head_block_middle.dds'))).toBe(true)
     discard(out)
   end)
 
@@ -138,7 +141,7 @@ suite.describe('generate', function()
     expect(result.files).toBe(319)
     expect(result.font).toBe 'DemonicLetters'
     expect(result.seed).toBe(0)
-    expect(support.file(jess.fs.join(out, 'stale.txt'))).toBe(support.digest 'left behind')
+    expect(support.file(fs.join(out, 'stale.txt'))).toBe(support.digest 'left behind')
     pin('demonic', support.folder(out, '%.dds$'))
     pin('demonic journal', support.folder(out, '^tx_menubook_'))
     pin('demonic pressed', support.folder(out, '_pressed%.dds$'))
@@ -200,13 +203,13 @@ suite.describe('generateAll', function()
 
   suite.it('makes every theme in a folder of its own, cleared first', function()
     local root = scratch('ui', 'all')
-    local stale = plant(jess.fs.join(root, 'Rose', 'Textures'), 'stale.dds', 'left behind')
+    local stale = plant(fs.join(root, 'Rose', 'Textures'), 'stale.dds', 'left behind')
     local results = ui.generateAll(root, { seed = 5, font = 'Mystic Cards' })
     local expected = {}
 
     for index, theme in Themes do
       table.insert(expected, {
-        output = jess.fs.join(root, theme.name, 'Textures'),
+        output = fs.join(root, theme.name, 'Textures'),
         files = 318,
         seed = 5 + index * 1000,
         font = 'MysticCards',
@@ -216,11 +219,11 @@ suite.describe('generateAll', function()
     end
 
     expect(results).toEqual(expected)
-    expect(jess.fs.exists(stale)).toBe(false)
+    expect(fs.exists(stale)).toBe(false)
     pin('all', support.folder(root))
 
     for _, theme in Themes do
-      pin(`all {theme.name}`, support.folder(jess.fs.join(root, theme.name, 'Textures')))
+      pin(`all {theme.name}`, support.folder(fs.join(root, theme.name, 'Textures')))
     end
 
     discard(root)
@@ -232,13 +235,14 @@ suite.describe('shuffle', function()
   --- named.
   local function mods(name: string, others: { { string } }): (string, string)
     local root = scratch('shuffle', name)
-    local own = jess.fs.join(root, 'own', 'Textures')
+    local own = fs.join(root, 'own', 'Textures')
 
-    jess.fs.createDir(own)
+    local done, problem = fs.mkdir(own, { recursive = true })
+    if not done then error(problem, 0) end
 
     for index, names in others do
       for _, file in names do
-        plant(jess.fs.join(root, `other{index}`, 'Textures'), file, 'theirs')
+        plant(fs.join(root, `other{index}`, 'Textures'), file, 'theirs')
       end
     end
 
@@ -248,15 +252,16 @@ suite.describe('shuffle', function()
   suite.it('replaces each of its files with one taken from another mod', function()
     local root, own = mods('taken', { { 'first.dds', 'second.dds' } })
 
-    plant(jess.fs.join(root, 'other1', 'Textures', 'nested'), 'third.dds', 'theirs')
+    plant(fs.join(root, 'other1', 'Textures', 'nested'), 'third.dds', 'theirs')
     plant(own, 'menu.dds', 'ours')
     plant(own, 'cursor.dds', 'ours')
-    jess.fs.createDir(jess.fs.join(own, 'folder'))
+    local done, problem = fs.mkdir(fs.join(own, 'folder'), { recursive = true })
+    if not done then error(problem, 0) end
 
     expect(shuffle.shuffle { cwd = own, seed = 7 }).toEqual { directory = own, replaced = 2 }
-    expect(support.file(jess.fs.join(own, 'menu.dds'))).toBe(support.digest 'theirs')
-    expect(support.file(jess.fs.join(own, 'cursor.dds'))).toBe(support.digest 'theirs')
-    expect(#support.files(jess.fs.join(root, 'other1'))).toBe(1)
+    expect(support.file(fs.join(own, 'menu.dds'))).toBe(support.digest 'theirs')
+    expect(support.file(fs.join(own, 'cursor.dds'))).toBe(support.digest 'theirs')
+    expect(#support.files(fs.join(root, 'other1'))).toBe(1)
     expect(#support.files(own)).toBe(2)
   end)
 
@@ -268,12 +273,12 @@ suite.describe('shuffle', function()
     plant(own, 'frame.dds', 'ours')
 
     expect(shuffle.shuffle { cwd = own, seed = 1 }).toEqual { directory = own, replaced = 1 }
-    expect(#support.files(jess.fs.join(root, 'other1'))).toBe(0)
+    expect(#support.files(fs.join(root, 'other1'))).toBe(0)
 
     local taken = 0
 
     for _, name in support.files(own) do
-      if support.file(jess.fs.join(own, name)) == support.digest 'theirs' then taken += 1 end
+      if support.file(fs.join(own, name)) == support.digest 'theirs' then taken += 1 end
     end
 
     expect(taken).toBe(1)
@@ -286,7 +291,7 @@ suite.describe('shuffle', function()
       plant(own, 'menu.dds', 'ours')
 
       expect(shuffle.shuffle { cwd = own, seed = seed }).toEqual { directory = own, replaced = 1 }
-      expect(#support.files(jess.fs.join(root, 'other1')) + #support.files(jess.fs.join(root, 'other2'))).toBe(1)
+      expect(#support.files(fs.join(root, 'other1')) + #support.files(fs.join(root, 'other2'))).toBe(1)
     end
   end)
 
@@ -299,7 +304,7 @@ suite.describe('shuffle', function()
       shuffle.shuffle { cwd = own }
     end).toThrow 'no other directories with Textures subdirectory found'
 
-    expect(support.file(jess.fs.join(own, 'menu.dds'))).toBe(support.digest 'ours')
+    expect(support.file(fs.join(own, 'menu.dds'))).toBe(support.digest 'ours')
 
     expect(function()
       shuffle.shuffle { cwd = '/' }

@@ -5,6 +5,7 @@
 -- that write where the process happens to stand (`h3header`, `morrowind-fucked`) are held only
 -- to what they refuse before they write.
 local cli = require '@st4sh/scripts.cli'
+local fs = require '@dream/fs'
 local goldens = require './goldens'
 local magick = require '@magick'
 local scripts = require '@st4sh/scripts'
@@ -16,7 +17,7 @@ local variants = require '@st4sh/scripts.material-variants'
 local expect = test.expect
 local suite = test.new()
 local pin, settle = support.goldens(goldens.cli)
-local scratch, join = support.scratch, jess.fs.join
+local scratch, join = support.scratch, fs.join
 
 --- A picture of noise written as a PNG, and its path.
 local function photo(folder: string, name: string, width: number, height: number, seed: number): string
@@ -26,7 +27,7 @@ end
 --- Removes every file under a folder.
 local function discard(folder: string)
   for _, path in support.files(folder) do
-    jess.fs.remove(join(folder, path))
+    fs.remove(join(folder, path))
   end
 end
 
@@ -334,7 +335,8 @@ suite.describe('cod3x and material variants', function()
 
     photo(folder, 'slate.png', 100, 80, 71)
     photo(folder, 'oak.png', 70, 90, 72)
-    jess.fs.write(join(folder, 'materials.tsv'), catalog)
+    local done, problem = fs.writeFile(join(folder, 'materials.tsv'), catalog, { atomic = true, createParents = true })
+    if not done then error(problem, 0) end
 
     local result = cli.run('material-variants', {
       '--materials',

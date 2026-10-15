@@ -4,6 +4,7 @@
 -- from a seed, fingerprints of the files a generator left behind, and the goldens every one is
 -- held to, which were recorded from the package as it was imported.
 local bytes = require '@dream/bytes'
+local fs = require '@dream/fs'
 local magick = require '@magick'
 local test = require '@jess/test'
 
@@ -12,9 +13,10 @@ export type Image = typeof(magick.new(1, 1))
 --- A folder of a suite's own under the harness's scratch root, made if it is not there.
 local function scratch(...: string): string
   local root = assert(rawget(_G, 'scratchRoot') :: string?, 'the case needs a scratchRoot')
-  local folder = jess.fs.join(root, 'st4sh-scripts', ...)
+  local folder = fs.join(root, 'st4sh-scripts', ...)
 
-  jess.fs.createDir(folder)
+  local done, problem = fs.mkdir(folder, { recursive = true })
+  if not done then error(problem, 0) end
 
   return folder
 end
@@ -55,19 +57,22 @@ end
 
 --- The length of a file and the CRC-32 of its bytes.
 local function file(path: string): string
-  return digest(assert(jess.fs.read(path), `{path} is not there`))
+  return digest((fs.readFileString(path) or error(`{path} is not there`, 0)))
 end
 
---- Every file under a folder, by its path from the folder, sorted: `jess.fs.list` gives names in
+--- Every file under a folder, by its path from the folder, sorted: `fs.list` gives names in
 --- whatever order the filesystem keeps them.
 local function files(folder: string): { string }
   local found: { string } = {}
 
   local function walk(directory: string, prefix: string)
-    for _, name in jess.fs.list(directory) do
-      local path = jess.fs.join(directory, name)
+    local names, problem = fs.list(directory)
+    if not names then error(problem, 0) end
 
-      if jess.fs.isDir(path) then
+    for _, name in names do
+      local path = fs.join(directory, name)
+
+      if fs.isDir(path) then
         walk(path, `{prefix}{name}/`)
       else
         table.insert(found, prefix .. name)
@@ -89,7 +94,7 @@ local function folder(root: string, pattern: string?): string
   for _, path in files(root) do
     if pattern and not string.find(path, pattern) then continue end
 
-    table.insert(lines, `{path} {file(jess.fs.join(root, path))}\n`)
+    table.insert(lines, `{path} {file(fs.join(root, path))}\n`)
   end
 
   return `{#lines}:{string.format('%08x', bytes.crc32(table.concat(lines)))}`

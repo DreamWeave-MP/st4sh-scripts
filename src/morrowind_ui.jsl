@@ -3,6 +3,7 @@
 -- Port of generate_menu.sh to Jess/Luau. No subprocesses; all raster work is @magick.
 local dataPlane = require '@dream/data'
 local fontMasks = require '@st4sh/scripts.morrowind-font-masks'
+local fs = require '@dream/fs'
 local magick = require '@magick'
 local oracleMasks = require '@st4sh/scripts.morrowind-oracle-masks'
 local spiralMasks = require '@st4sh/scripts.morrowind-spiral-masks'
@@ -103,9 +104,10 @@ local function canonicalFont(name: string?): string
 end
 
 local function ensureDir(path: string)
-  if not jess.fs.exists(path) then
-    jess.fs.createDir(path)
-  elseif not jess.fs.isDir(path) then
+  if not fs.exists(path) then
+    local done, problem = fs.mkdir(path, { recursive = true })
+    if not done then error(problem, 0) end
+  elseif not fs.isDir(path) then
     error(path .. ' exists and is not a directory', 2)
   end
 end
@@ -158,7 +160,7 @@ local function applyAlpha(image: Image, mask: Mask)
 end
 
 local function write(folder: string, name: string, image: Image)
-  magick.writeDDS(jess.fs.join(folder, name .. '.dds'), image)
+  magick.writeDDS(fs.join(folder, name .. '.dds'), image)
 end
 
 --- A label of the menu (`p`) or of the journal (`j`) painted from a tile. With a stroke or a
@@ -427,8 +429,9 @@ function Menu.generate(options: Options?): Result
   frameTextures(folder, 512, 512, 2, active, highlight, 'menu_thick_border')
   frameTextures(folder, 256, 16, 1, highlight, active, 'menu_head_block')
   -- Match the original's odd rename of center -> middle.
-  jess.fs.copy(jess.fs.join(folder, 'menu_head_block_center.dds'), jess.fs.join(folder, 'menu_head_block_middle.dds'))
-  jess.fs.remove(jess.fs.join(folder, 'menu_head_block_center.dds'))
+  local done, problem = fs.copy(fs.join(folder, 'menu_head_block_center.dds'), fs.join(folder, 'menu_head_block_middle.dds'))
+  if not done then error(problem, 0) end
+  fs.remove(fs.join(folder, 'menu_head_block_center.dds'))
   frameTextures(folder, 128, 16, 4, active, highlight, 'menu_button_frame')
   frameTextures(folder, 12, 12, 2, highlight, active, 'menu_rightbuttondown', '')
   frameTextures(folder, 12, 12, 2, active, highlight, 'menu_rightbuttonup', '')
@@ -447,9 +450,12 @@ function Menu.generate(options: Options?): Result
   -- The oracle supplies IM's exact antialiased rotate/emboss silhouette; theme color stays live.
   write(folder, 'tx_cursor', magick.paintMask(oracleMasks.get 'tx_cursor', active))
 
+  local names, problem = fs.list(folder)
+  if not names then error(problem, 0) end
+
   return {
     output = folder,
-    files = #jess.fs.list(folder),
+    files = #names,
     seed = seed,
     font = font,
     primarySize = primarySize,
@@ -483,13 +489,16 @@ function Menu.generateAll(root: string?, options: AllOptions?): { Result }
   ensureDir(parent)
 
   for index, theme in Menu.themes do
-    local folder = jess.fs.join(parent, theme.name, 'Textures')
+    local folder = fs.join(parent, theme.name, 'Textures')
 
-    ensureDir(jess.fs.join(parent, theme.name))
+    ensureDir(fs.join(parent, theme.name))
 
-    if jess.fs.exists(folder) then
-      for _, name in jess.fs.list(folder) do
-        jess.fs.remove(jess.fs.join(folder, name))
+    if fs.exists(folder) then
+      local names, problem = fs.list(folder)
+      if not names then error(problem, 0) end
+
+      for _, name in names do
+        fs.remove(fs.join(folder, name))
       end
     else
       ensureDir(folder)

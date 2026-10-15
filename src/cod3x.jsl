@@ -2,6 +2,7 @@
 --!optimize 2
 -- COD3X artwork generators ported from hero.sh, scope.sh, mark.sh, and generate.sh.
 -- Text coverage is compiled from the supplied Oxanium WOFF2 through native ImageMagick.
+local fs = require '@dream/fs'
 local magick = require '@magick'
 local masks = require '@st4sh/scripts.cod3x-masks'
 
@@ -43,9 +44,10 @@ local CardCorners = {
 local CardColors = { Green, Violet, Blue, Gold, '#ff8f70', Muted }
 
 local function ensureDir(path: string)
-  if not jess.fs.exists(path) then
-    jess.fs.createDir(path)
-  elseif not jess.fs.isDir(path) then
+  if not fs.exists(path) then
+    local done, problem = fs.mkdir(path, { recursive = true })
+    if not done then error(problem, 0) end
+  elseif not fs.isDir(path) then
     error(path .. ' exists and is not a directory', 2)
   end
 end
@@ -73,7 +75,7 @@ function Cod3x.generateHero(options: Options?): Hero
   stamp(out, 'hero.meta', Muted)
 
   -- @magick intentionally has no WebP codec yet; preserve the image pixels as PNG.
-  local path = settings.path or jess.fs.join(folder, 'nexusHeader.png')
+  local path = settings.path or fs.join(folder, 'nexusHeader.png')
 
   magick.write(path, out)
 
@@ -106,7 +108,7 @@ function Cod3x.generateScope(options: Options?): Scope
     stamp(out, `scope.card.detail.{card - 1}`, Text)
   end
 
-  local path = settings.path or jess.fs.join(folder, 'scope.png')
+  local path = settings.path or fs.join(folder, 'scope.png')
 
   magick.write(path, out)
 
@@ -129,7 +131,7 @@ function Cod3x.generateMark(options: Options?): Mark
   stamp(icon, 'mark.icon.tag', Text)
   stamp(icon, 'mark.icon.name', Muted)
 
-  local iconPath = settings.iconPath or jess.fs.join(folder, 'icon.png')
+  local iconPath = settings.iconPath or fs.join(folder, 'icon.png')
 
   magick.write(iconPath, icon)
 
@@ -145,7 +147,7 @@ function Cod3x.generateMark(options: Options?): Mark
   stamp(badge, 'mark.badge.desc', Text)
   stamp(badge, 'mark.badge.meta', Muted)
 
-  local badgePath = settings.badgePath or jess.fs.join(folder, 'badge.png')
+  local badgePath = settings.badgePath or fs.join(folder, 'badge.png')
 
   magick.write(badgePath, badge)
 

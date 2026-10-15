@@ -7,13 +7,14 @@
 -- filesystem.write bench/bench.jsl <folder> [filter] [record]`, on a release build. Prints one
 -- line per workload: its name, a tab, and the seconds one call takes.
 --
--- Every generator writes files, and `jess.fs.write` syncs each one to the disk before it
+-- Every generator writes files, and `fs.writeFile` syncs each one to the disk before it
 -- answers: on a disk that is most of a generator's time, and on a tmpfs none of it, so the
 -- folder given decides which of the two is measured. Every workload's files, or the masks it
 -- inflated, are held to the fingerprint the package gave as imported, so a path that stopped
 -- doing the work, or does other work, fails here instead of posting a time. With `record` the
 -- fingerprints are printed as lines of the table below instead of being checked.
 local bytes = require '@dream/bytes'
+local fs = require '@dream/fs'
 local magick = require '@magick'
 local scripts = require '@st4sh/scripts'
 
@@ -37,7 +38,7 @@ type Made = string | { Mask }
 local folder: string?, filter: string?, mode: string? = ...
 local only = if filter and filter ~= '' then filter else nil
 local recording = mode == 'record'
-local join = jess.fs.join
+local join = fs.join
 
 if not folder then error('st4sh-scripts bench: a folder to write into is required', 0) end
 
@@ -170,19 +171,22 @@ local function listed(lines: { string }): string
 end
 
 --- Every file under a folder by its path from the folder and its digest, a line each: the names
---- sorted, since `jess.fs.list` gives them in whatever order the filesystem keeps them.
+--- sorted, as `fs.list` gives them.
 local function gather(directory: string, prefix: string, lines: { string })
-  local names = jess.fs.list(directory)
+  local names, problem = fs.list(directory)
+  if not names then error(problem, 0) end
 
   table.sort(names)
 
   for _, name in names do
     local path = join(directory, name)
 
-    if jess.fs.isDir(path) then
+    if fs.isDir(path) then
       gather(path, `{prefix}{name}/`, lines)
     else
-      table.insert(lines, `{prefix}{name} {digest(assert(jess.fs.read(path)))}\n`)
+      local fileText, problem = fs.readFileString(path)
+      if not fileText then error(problem, 0) end
+      table.insert(lines, `{prefix}{name} {digest(fileText)}\n`)
     end
   end
 end
@@ -193,7 +197,7 @@ local function fingerprint(made: Made): string
     return listed([for mask in made => `{mask.width}x{mask.height} {digest(mask.data)}\n`])
   end
 
-  if not jess.fs.isDir(made) then return digest(assert(jess.fs.read(made), `{made} is not there`)) end
+  if not fs.isDir(made) then return digest((fs.readFileString(made) or error(`{made} is not there`, 0))) end
 
   local lines: { string } = {}
 
@@ -279,7 +283,8 @@ local function workload(name: string, body: () -> Made, prepare: (() -> ())?)
   end
 end
 
-jess.fs.createDir(root)
+local done, problem = fs.mkdir(root, { recursive = true })
+if not done then error(problem, 0) end
 
 local crowbar = photo('crowbar.png', 240, 360, 9)
 local material = photo('material.png', 640, 600, 33)
@@ -358,7 +363,8 @@ workload('h3: header, clean and classified', function(): Made
 
   return join(root, 'header')
 end, function()
-  jess.fs.createDir(join(root, 'header'))
+  local done, problem = fs.mkdir(join(root, 'header'), { recursive = true })
+  if not done then error(problem, 0) end
 end)
 
 workload('h3: logo icon', function(): Made
@@ -416,7 +422,8 @@ workload('variants: one material, with its preview and site data', function(): M
 
   return join(root, 'variants')
 end, function()
-  jess.fs.write(join(root, 'materials.tsv'), Catalog)
+  local done, problem = fs.writeFile(join(root, 'materials.tsv'), Catalog, { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 end)
 
 workload('cli: a command dispatched to a generator with nothing to make', function(): Made

@@ -3,6 +3,7 @@
 -- H3 artwork: the header and the logo, the H3UI chrome sources made from a photographed
 -- material, and the chrome atlases recomposed from those sources or from a Morrowind theme.
 local dataPlane = require '@dream/data'
+local fs = require '@dream/fs'
 local magick = require '@magick'
 local masks = require '@st4sh/scripts.h3-masks'
 
@@ -145,9 +146,10 @@ end
 return {]]
 
 local function ensureDir(path: string)
-  if not jess.fs.exists(path) then
-    jess.fs.createDir(path)
-  elseif not jess.fs.isDir(path) then
+  if not fs.exists(path) then
+    local done, problem = fs.mkdir(path, { recursive = true })
+    if not done then error(problem, 0) end
+  elseif not fs.isDir(path) then
     error(path .. ' exists and is not a directory', 2)
   end
 end
@@ -317,13 +319,13 @@ function H3.generateLogo(options: LogoOptions?): Logo
 
   if target == 'clean' or target == 'classified' or target == 'all' then
     local clean = logoClean(crowbar)
-    local cleanPath = jess.fs.join(folder, 'h3_badge_clean_v6.png')
+    local cleanPath = fs.join(folder, 'h3_badge_clean_v6.png')
 
     magick.write(cleanPath, clean)
     result.clean = cleanPath
 
     if target ~= 'clean' then
-      local classifiedPath = jess.fs.join(folder, 'h3_badge_classified_v6.png')
+      local classifiedPath = fs.join(folder, 'h3_badge_classified_v6.png')
 
       magick.write(classifiedPath, logoClassified(clean, settings.seed or 3301))
       result.classified = classifiedPath
@@ -331,7 +333,7 @@ function H3.generateLogo(options: LogoOptions?): Logo
   end
 
   if target == 'icon' or target == 'all' then
-    local iconPath = jess.fs.join(folder, 'h3_icon_v6.png')
+    local iconPath = fs.join(folder, 'h3_icon_v6.png')
 
     magick.write(iconPath, logoIcon(crowbar))
     result.icon = iconPath
@@ -482,10 +484,10 @@ function H3.generateChromeSources(options: ChromeOptions?): ChromeSources
 
   ensureDir(output)
 
-  local textures = jess.fs.join(output, 'Textures')
+  local textures = fs.join(output, 'Textures')
 
   ensureDir(textures)
-  textures = jess.fs.join(textures, 'h3ui')
+  textures = fs.join(textures, 'h3ui')
   ensureDir(textures)
 
   local material = magick.read(materialPath)
@@ -505,7 +507,7 @@ function H3.generateChromeSources(options: ChromeOptions?): ChromeSources
   local controlInner, controlPressed = toned(field, 56, 100), toned(field, 30, 68)
 
   local function write(name: string, image: Image)
-    magick.write(jess.fs.join(textures, name), image)
+    magick.write(fs.join(textures, name), image)
   end
 
   write('frame_thick.dds', twoTone(512, 512, 4, 2, frameOuter, frameOuter, 'uniform'))
@@ -534,9 +536,9 @@ end
 --- The file a source of chrome is in, whichever of the formats it is found in first.
 local function findSource(directory: string, basename: string): string?
   for _, extension in SourceExtensions do
-    local path = jess.fs.join(directory, basename .. '.' .. extension)
+    local path = fs.join(directory, basename .. '.' .. extension)
 
-    if jess.fs.exists(path) then return path end
+    if fs.exists(path) then return path end
   end
 
   return nil
@@ -697,10 +699,10 @@ function H3.recomposeChrome(options: RecomposeOptions?): Recomposed
 
   ensureDir(output)
 
-  local textures = jess.fs.join(output, 'Textures')
+  local textures = fs.join(output, 'Textures')
 
   ensureDir(textures)
-  textures = jess.fs.join(textures, 'h3ui')
+  textures = fs.join(textures, 'h3ui')
   ensureDir(textures)
 
   local themes: { [string]: Theme } = {}
@@ -760,25 +762,27 @@ function H3.recomposeChrome(options: RecomposeOptions?): Recomposed
       atlas:over(image, piece.left, piece.top)
     end
 
-    magick.write(jess.fs.join(textures, name .. '_chrome.dds'), atlas)
+    magick.write(fs.join(textures, name .. '_chrome.dds'), atlas)
 
     if name == 'morrowind' then
-      local chrome = jess.fs.join(textures, 'chrome')
+      local chrome = fs.join(textures, 'chrome')
 
       ensureDir(chrome)
-      jess.fs.copy(jess.fs.join(textures, 'morrowind_chrome.dds'), jess.fs.join(chrome, 'morrowind.dds'))
+      local done, problem = fs.copy(fs.join(textures, 'morrowind_chrome.dds'), fs.join(chrome, 'morrowind.dds'))
+      if not done then error(problem, 0) end
     end
   end
 
-  local manifestPath = jess.fs.join(output, 'h3ui_chrome_manifest.lua')
+  local manifestPath = fs.join(output, 'h3ui_chrome_manifest.lua')
 
-  jess.fs.write(manifestPath, manifest(themes))
+  local done, problem = fs.writeFile(manifestPath, manifest(themes), { atomic = true, createParents = true })
+  if not done then error(problem, 0) end
 
   return {
     manifest = manifestPath,
     output = textures,
-    h3ui = if themes.h3ui then jess.fs.join(textures, 'h3ui_chrome.dds') else nil,
-    morrowind = if themes.morrowind then jess.fs.join(textures, 'morrowind_chrome.dds') else nil,
+    h3ui = if themes.h3ui then fs.join(textures, 'h3ui_chrome.dds') else nil,
+    morrowind = if themes.morrowind then fs.join(textures, 'morrowind_chrome.dds') else nil,
   }
 end
 
