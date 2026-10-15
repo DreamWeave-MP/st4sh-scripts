@@ -4,7 +4,7 @@ manifest_version = 1
 id = "org.dreamweave.st4sh-scripts"
 version = "0.1.1"
 jess_api = "1"
-include = ["src", "assets", "LICENSES", "README.md"]
+include = ["src", "assets", "LICENSES", "README.md", "tests"]
 tests = ["tests/masks.jsl", "tests/morrowind.jsl", "tests/artwork.jsl", "tests/cli.jsl"]
 
 [dependencies]
