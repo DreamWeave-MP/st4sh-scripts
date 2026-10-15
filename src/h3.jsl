@@ -1,5 +1,4 @@
 --!strict
---!native
 --!optimize 2
 -- H3 artwork: the header and the logo, the H3UI chrome sources made from a photographed
 -- material, and the chrome atlases recomposed from those sources or from a Morrowind theme.
@@ -415,6 +414,7 @@ end
 
 --- A frame of two tiles, the inner one set in from the edge by a band, shaded, with everything
 --- inside its margin made clear.
+@native
 local function twoTone(
   width: number,
   height: number,

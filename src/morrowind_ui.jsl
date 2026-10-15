@@ -1,5 +1,4 @@
 --!strict
---!native
 --!optimize 2
 -- Port of generate_menu.sh to Jess/Luau. No subprocesses; all raster work is @magick.
 local dataPlane = require '@dream/data'
@@ -112,6 +111,7 @@ local function ensureDir(path: string)
 end
 
 --- A mask of whichever of two masks covers each pixel more.
+@native
 local function maxMask(first: Mask, second: Mask): Mask
   local count = first.width * first.height
   local out = buffer.create(count)
@@ -124,6 +124,7 @@ local function maxMask(first: Mask, second: Mask): Mask
 end
 
 --- A mask with its coverage scaled, each byte rounded.
+@native
 local function scaleMaskAlpha(mask: Mask, amount: number): Mask
   local count = mask.width * mask.height
   local out = buffer.create(count)

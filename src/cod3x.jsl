@@ -1,5 +1,4 @@
 --!strict
---!native
 --!optimize 2
 -- COD3X artwork generators ported from hero.sh, scope.sh, mark.sh, and generate.sh.
 -- Text coverage is compiled from the supplied Oxanium WOFF2 through native ImageMagick.

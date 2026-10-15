@@ -1,3 +1,4 @@
+--!native
 -- Alpha topology sampled from the supplied ImageMagick implementation.
 local bytes = require("@dream/bytes")
 local P = {

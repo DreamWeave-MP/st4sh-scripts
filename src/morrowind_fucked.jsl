@@ -1,5 +1,4 @@
 --!strict
---!native
 --!optimize 2
 -- Destructive port of generate_fucked.sh, isolated from the normal Morrowind generator.
 local Shuffle = {}

@@ -1,5 +1,4 @@
 --!strict
---!native
 -- Unified St4sh graphics/build-script toolbox. Generic image operations live in @magick.
 return table.freeze {
   atlas = require '@st4sh/scripts.atlas',

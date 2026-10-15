@@ -1,5 +1,4 @@
 --!strict
---!native
 --!optimize 2
 -- Port of build_material_variants.sh. The catalog/source assets are caller-owned.
 local h3 = require '@st4sh/scripts.h3'

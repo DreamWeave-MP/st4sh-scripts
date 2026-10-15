@@ -1,5 +1,4 @@
 --!strict
---!native
 -- Parser/dispatcher equivalents of the old loose *.jsl adapters.
 -- Call require('@st4sh/scripts.cli').run(command, args).
 local atlas = require '@st4sh/scripts.atlas'

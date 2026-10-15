@@ -1,3 +1,4 @@
+--!native
 -- Alpha masks captured from the native ImageMagick oracle for geometry-heavy primitives.
 local bytes=require("@dream/bytes")
 local packed={
