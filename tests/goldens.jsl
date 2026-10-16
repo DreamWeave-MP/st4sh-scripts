@@ -3,7 +3,7 @@
 -- of a mask or the length of a file and the CRC-32 of its bytes, or how many files a generator
 -- left and the CRC-32 of the list of them. A suite that misses one reports the line it would
 -- have to be.
-return table.freeze {
+return table.freeze({
   masks = {
     ['font DejaVuLGCSansMono journal'] = '510:94c8c546',
     ['font DejaVuLGCSansMono p'] = '1539:ce60fe01',
@@ -191,4 +191,4 @@ return table.freeze {
     ['variants random crop'] = '10,0',
     ['variants random slate'] = '1048704:c688ebf9',
   },
-}
+} :: { [string]: { [string]: string } })

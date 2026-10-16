@@ -1,3 +1,4 @@
+--!strict
 -- Generated alpha masks from supplied oxanium.woff2 through native ImageMagick 7.1.2.
 local bytes=require("@dream/bytes")
 local packed={
@@ -31,5 +32,5 @@ local packed={
 }
 local M={}
 @native
-function M.get(name) local r=packed[name] if not r then error("unknown COD3X mask: "..tostring(name),2) end return {width=r[1],height=r[2],data=bytes.inflate(bytes.fromBase64(r[3]),{format="zlib",maxSize=r[1]*r[2]})} end
+function M.get(name: string) local r=packed[name] if not r then error("unknown COD3X mask: "..tostring(name),2) end local width,height=r[1] :: number,r[2] :: number return {width=width,height=height,data=bytes.inflate(bytes.fromBase64(r[3] :: string),{format="zlib",maxSize=width*height})} end
 return M

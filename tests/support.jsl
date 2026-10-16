@@ -112,7 +112,7 @@ end
 --- Holds named observations to their goldens. `pin` notes a miss instead of raising, and
 --- `settle`, run after each case, fails the case with every miss written as a line of the golden
 --- table, so one run of a suite says what all of its goldens would have to be.
-local function goldens(recorded: { [string]: string }): ((name: string, observed: string) -> (), () -> ())
+local function goldens(recorded: { read [string]: string }): ((name: string, observed: string) -> (), () -> ())
   local misses: { string } = {}
   local seen: { [string]: boolean } = {}
 

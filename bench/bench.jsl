@@ -18,9 +18,13 @@ local fs = require '@dream/fs'
 local magick = require '@magick'
 local scripts = require '@st4sh/scripts'
 
+local atlas = require '@st4sh/scripts.atlas'
 local cod3xMasks = require '@st4sh/scripts.cod3x-masks'
 local fontMasks = require '@st4sh/scripts.morrowind-font-masks'
+local h3 = require '@st4sh/scripts.h3'
 local h3Masks = require '@st4sh/scripts.h3-masks'
+local materialVariants = require '@st4sh/scripts.material-variants'
+local morrowindUi = require '@st4sh/scripts.morrowind-ui'
 local oracleMasks = require '@st4sh/scripts.morrowind-oracle-masks'
 local spiralMasks = require '@st4sh/scripts.morrowind-spiral-masks'
 
@@ -342,7 +346,8 @@ workload('morrowind: a menu theme', function(): Made
 end)
 
 workload('morrowind: a menu theme, DejaVu at 14', function(): Made
-  local options = { output = join(root, 'theme-dejavu'), font = 'DejaVuLGCSansMono', primarySize = 14, seed = 77 }
+  local options: morrowindUi.Options =
+    { output = join(root, 'theme-dejavu'), font = 'DejaVuLGCSansMono', primarySize = 14, seed = 77 }
 
   return scripts.morrowind.generate(options).output
 end)
@@ -362,7 +367,7 @@ workload('cod3x: icon and badge', function(): Made
 end)
 
 workload('h3: header, clean and classified', function(): Made
-  local options = {
+  local options: h3.HeaderOptions = {
     crowbar = crowbar,
     cleanOutput = join(root, 'header', 'clean.png'),
     output = join(root, 'header', 'classified.png'),
@@ -377,7 +382,7 @@ end, function()
 end)
 
 workload('h3: logo icon', function(): Made
-  return scripts.h3.generateLogo({ crowbar = crowbar, output = join(root, 'logo'), target = 'icon' }).icon
+  return scripts.h3.generateLogo({ crowbar = crowbar, output = join(root, 'logo'), target = 'icon' }).icon :: string
 end)
 
 workload('h3: chrome sources', function(): Made
@@ -404,7 +409,7 @@ end)
 
 for _, atlasMode in AtlasModes do
   workload(`atlas: sixteen tiles, {atlasMode.name}`, function(): Made
-    local options = {
+    local options: atlas.Options = {
       input = picture,
       output = join(root, 'atlas.dds'),
       rows = 4,
@@ -419,7 +424,7 @@ for _, atlasMode in AtlasModes do
 end
 
 workload('variants: one material, with its preview and site data', function(): Made
-  local options = {
+  local options: materialVariants.Options = {
     materials = join(root, 'materials.tsv'),
     sourceDir = root,
     installDir = join(root, 'variants', 'install'),

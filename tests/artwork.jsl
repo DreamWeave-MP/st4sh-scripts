@@ -119,7 +119,9 @@ suite.describe('cod3x', function()
 
     local taken = plant(scratch('cod3x', 'refused'), 'taken', 'a file')
 
-    for _, generate in { cod3x.generateHero, cod3x.generateScope, cod3x.generateMark, cod3x.generateAll } do
+    local generators: { (options: cod3x.Options?) -> unknown } =
+      { cod3x.generateHero, cod3x.generateScope, cod3x.generateMark, cod3x.generateAll }
+    for _, generate in generators do
       expect(function()
         generate { output = taken }
       end).toThrow(taken .. ' exists and is not a directory')
@@ -146,7 +148,7 @@ suite.describe('h3 header and logo', function()
     }
 
     pin('header clean', support.file(result.clean))
-    pin('header classified', support.file(result.classified))
+    pin('header classified', support.file(result.classified :: string))
 
     local seeded = h3.generateHeader {
       crowbar = crowbar,
@@ -156,7 +158,7 @@ suite.describe('h3 header and logo', function()
     }
 
     pin('header clean as dds', support.file(seeded.clean))
-    pin('header seeded as dds', support.file(seeded.classified))
+    pin('header seeded as dds', support.file(seeded.classified :: string))
   end)
 
   suite.it('stops at the clean header when told not to classify', function()
@@ -180,9 +182,9 @@ suite.describe('h3 header and logo', function()
       icon = join(out, 'h3_icon_v6.png'),
     }
 
-    pin('logo clean', support.file(result.clean))
-    pin('logo classified', support.file(result.classified))
-    pin('logo icon', support.file(result.icon))
+    pin('logo clean', support.file(result.clean :: string))
+    pin('logo classified', support.file(result.classified :: string))
+    pin('logo icon', support.file(result.icon :: string))
   end)
 
   suite.it('makes only the target asked for', function()

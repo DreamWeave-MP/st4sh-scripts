@@ -34,7 +34,7 @@ local Kinds = {
   { name = 'over', pattern = '_over%.dds$' },
 }
 
-local Themes = {
+local Themes: { { name: string, primary: string?, secondary: string?, tertiary: string?, primarySize: number? } } = {
   { name = 'ArcaneEnergy', primary = 'AA00FF', tertiary = '5500AA', secondary = 'E040FB' },
   { name = 'MysticOcean', primary = '0074d9', secondary = '001f3f', tertiary = '7fdbff' },
   { name = 'momw', primary = '222', secondary = '444', tertiary = '333' },

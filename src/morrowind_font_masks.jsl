@@ -1,3 +1,4 @@
+--!strict
 -- Generated from the bundled font files with ImageMagick 7.1.2; do not hand-edit.
 local bytes = require("@dream/bytes")
 local M = {}
@@ -229,10 +230,11 @@ local packed = {
     ["MysticCards|p|32|Save|20"] = {128, 64, "eNrtl2lIVFEUx+805ZhL6og6QouVuGGiWVhIubRCBEpKSGCmRpARLbaiHxIURgwxNDMKgxbFLEtSEVyKyg861pQWo0amGKKGmumkzTj/7rwlhaQvbxq/3N+Hd8959zz+7917zrkzhDAYDAaDwWAwGAtgF5NbXntz1yKp2+eMgaPMZjHkg79gtq2icpy+QDEhAT1h1pUPn8A7bzq6vgBMW4NHKpdYVd5rBAOenOXcB7wfLZVb9/MbgEjBjKM7UCCzrnwsUC/aso/ItnbyvcY8zVOloZ4LBa0OmNsUxyAHoWb9Q1wky/vTJS8UbNcTnTQDD5hNz+j4xJTU1Bi+Ho8DGrEyU4wIMo976maAWbVU/aNU/7Ofsypof0bjL64HvCVkRQUdDWanx90clDANxAsPpKGWXt2fQqNupkGHnKXpp+Mv3Iga6AuR2xdTZwMXdRu4xsfbamboLZ8+lCwh8q80IFiaftw84aGyTLqmJgcS2ap74EjIEaCTj0oCqnn5WpwnRNmLXoVdsgaGxzskrr/NK0G7+uJGWnm0BbWLU3sHgXO8uRt4aR5dnqOMRpUC9/LH0HXBQ3r+y7YkpcZu9xK8DuAYZ3if1tK3MgrVsBnopoOPDvXLCFlrpFP6uxGWL8ZAE4ZsCfG43IHJR11AnVh/NNOWk31jqFBQ7xIwleb0H3qBrBFIIOTkBHQpDpEm4KA48QPYlmVCHtccnwBtlhGU38+ef+LmAuWEZNGrDVlHd3/cVpyheTGCn4m80wS84QyVWilNvwTQRv/5elp2zQoSOAuoyM5+usfDh8UGl0O9/lDBKaLOFV+lKqa3UJr8GS7125NXmh2nSuChPSGZ9Nb3b2ia4spCOIsj6Ku5iY/56fmaMWRIk48yipXfXXPn+iD06dyvEe20vutWGFFdHZhsCBfX5kPB0rkHN9WMGkbb8nylya8avvHMMNd9TFXr/xHsYvFkV7TSluYYdbaoqkWr+9SiDrTywZvfrySLyRo39reDwWAwGAwGg2FZfgMz56IR"},
 }
 @native
-function M.get(key)
+function M.get(key: string)
     local row = packed[key]
     if not row then error("unknown bundled font mask: " .. key, 2) end
-    return { width = row[1], height = row[2], data = bytes.inflate(bytes.fromBase64(row[3]), { maxSize = row[1] * row[2] }) }
+    local width, height = row[1] :: number, row[2] :: number
+    return { width = width, height = height, data = bytes.inflate(bytes.fromBase64(row[3] :: string), { maxSize = width * height }) }
 end
-function M.has(key) return packed[key] ~= nil end
+function M.has(key: string) return packed[key] ~= nil end
 return M

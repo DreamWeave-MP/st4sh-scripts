@@ -39,18 +39,20 @@ local function collect(folder: string, found: { string })
   end
 end
 
+--- The folder the process runs in, raising why when there is none.
+local function currentDirectory(): string
+  local current, problem = fs.cwd()
+  if not current then error(problem, 0) end
+
+  return current
+end
+
 --- Replaces each file of a Textures folder with one chosen from the Textures folder of another
 --- mod beside it, and removes the chosen file from where it was.
 function Shuffle.shuffle(options: Options?): Result
   local settings: Options = options or {}
   local random = generator(settings.seed)
-  local directory = settings.cwd
-  if not directory then
-    local current, problem = fs.cwd()
-    if not current then error(problem, 0) end
-
-    directory = current
-  end
+  local directory = settings.cwd or currentDirectory()
   local parent = fs.parent(directory)
   local mods = parent and fs.parent(parent)
 
