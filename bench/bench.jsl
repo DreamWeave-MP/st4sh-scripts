@@ -24,6 +24,15 @@ local h3Masks = require '@st4sh/scripts.h3-masks'
 local oracleMasks = require '@st4sh/scripts.morrowind-oracle-masks'
 local spiralMasks = require '@st4sh/scripts.morrowind-spiral-masks'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 -- A build without the verified toolchain runs Luau slower than a release does, so a number from
 -- one says nothing about what ships.
 if not jess.bench.verified then
@@ -197,7 +206,7 @@ local function fingerprint(made: Made): string
     return listed([for mask in made => `{mask.width}x{mask.height} {digest(mask.data)}\n`])
   end
 
-  if not fs.isDir(made) then return digest((fs.readFileString(made) or error(`{made} is not there`, 0))) end
+  if not fs.isDir(made) then return digest((readText(made) or error(`{made} is not there`, 0))) end
 
   local lines: { string } = {}
 

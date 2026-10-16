@@ -8,6 +8,15 @@ local fs = require '@dream/fs'
 local magick = require '@magick'
 local test = require '@jess/test'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 export type Image = typeof(magick.new(1, 1))
 
 --- A folder of a suite's own under the harness's scratch root, made if it is not there.
@@ -57,7 +66,7 @@ end
 
 --- The length of a file and the CRC-32 of its bytes.
 local function file(path: string): string
-  return digest((fs.readFileString(path) or error(`{path} is not there`, 0)))
+  return digest((readText(path) or error(`{path} is not there`, 0)))
 end
 
 --- Every file under a folder, by its path from the folder, sorted: `fs.list` gives names in

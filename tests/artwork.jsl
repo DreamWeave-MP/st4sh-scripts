@@ -14,6 +14,15 @@ local test = require '@jess/test'
 local ui = require '@st4sh/scripts.morrowind-ui'
 local variants = require '@st4sh/scripts.material-variants'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 local suite = test.new()
 local pin, settle = support.goldens(goldens.artwork)
@@ -481,7 +490,7 @@ suite.describe('material variants', function()
       },
     }
 
-    expect(fs.readFileString(siteData)).toBe(
+    expect(readText(siteData)).toBe(
       '{\n  "materials": [\n'
         .. '    {"id": "slate", "family": "Stone", "name": "Slate \\"Grey\\"", "photo": "slate.png", "crop": [3, 0],'
         .. ' "url": "https://example.test/slate", "author": "A. Mason", "license": "CC0"},\n'
