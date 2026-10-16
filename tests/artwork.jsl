@@ -575,7 +575,7 @@ suite.describe('material variants', function()
       variants.build { materials = materials, sourceDir = folder }
     end).toThrow 'material variants: installDir required'
 
-    expect(fs.exists(install)).toBe(false)
+    expect((fs.exists(install))).toBe(false)
   end)
 end)
 

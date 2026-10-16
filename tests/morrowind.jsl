@@ -93,8 +93,8 @@ suite.describe('generate', function()
       pin(`default {kind.name}`, support.folder(out, kind.pattern))
     end
 
-    expect(fs.exists(fs.join(out, 'menu_head_block_center.dds'))).toBe(false)
-    expect(fs.exists(fs.join(out, 'menu_head_block_middle.dds'))).toBe(true)
+    expect((fs.exists(fs.join(out, 'menu_head_block_center.dds')))).toBe(false)
+    expect((fs.exists(fs.join(out, 'menu_head_block_middle.dds')))).toBe(true)
     discard(out)
   end)
 
@@ -219,7 +219,7 @@ suite.describe('generateAll', function()
     end
 
     expect(results).toEqual(expected)
-    expect(fs.exists(stale)).toBe(false)
+    expect((fs.exists(stale))).toBe(false)
     pin('all', support.folder(root))
 
     for _, theme in Themes do
