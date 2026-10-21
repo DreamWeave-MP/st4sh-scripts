@@ -1,0 +1,40 @@
+base_url = "https://dreamweave-mp.github.io/st4sh-scripts"
+title = "st4sh-scripts"
+description = "St4sh graphics and build scripts for Jess: the Morrowind UI generator, H3 artwork and chrome tools, COD3X generators and the atlas utility, over magick."
+compile_sass = true
+build_search_index = true
+generate_feeds = true
+feed_filenames = ["atom.xml"]
+taxonomies = [{ name = "tags", feed = false }]
+
+[search]
+index_format = "fuse_json"
+include_title = true
+include_description = true
+include_content = true
+truncate_content_length = 400
+
+[markdown]
+highlighting = { theme = "dracula-soft" }
+insert_anchor_links = "right"
+smart_punctuation = true
+
+[slugify]
+paths = "safe"
+
+[link_checker]
+skip_prefixes = ["https://github.com/", "https://www.nexusmods.com/"]
+
+[extra]
+github_username = "DreamWeave-MP"
+github_project = "st4sh-scripts"
+logo_text = "st4sh-scripts"
+palette = "indigo"
+menu_items = [
+    { name = "st4sh-scripts", url = "@/home/index.md" },
+    { name = "Network", url = "@/network.md" },
+]
+
+[extra.comments]
+enabled = false
+category = "General"
