@@ -1,0 +1,51 @@
+{
+  "schema_version": "3",
+  "document": "lock",
+  "project": "1a882ea1-5f83-49eb-ba1f-728d90ee1a2d",
+  "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
+  "releases": [
+    {
+      "version": "0.1.1",
+      "locked_from": "c53e2de8216961ae0621e5d4299f7afb9c3174b8",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.st4sh-scripts-0.1.1.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 861161,
+          "digests": {
+            "sha256": "d78052b89d5bc48015bc748aa6500af78367b9986af34493b7f622b74ce9286d"
+          },
+          "jess": {
+            "package": "org.dreamweave.st4sh-scripts",
+            "jess_api": "1",
+            "content_digest": "59096854ecf99a17ee5d51c2ff6b3211b7a323fb212b815b96aaabfccdfbcee1",
+            "dependencies": {
+              "org.dreamweave.magick": "^0.1.2"
+            }
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "st4sh-scripts",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    }
+  ]
+}
